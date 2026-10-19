@@ -1,0 +1,1409 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Halcyon Typewriter</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;0,700;1,400&family=Special+Elite&display=swap">
+<style>
+:root{
+  color-scheme: dark;
+  /* Layout: full-bleed WebGL stage; brass-edged status plate top-left; instrument drawer docked right (bottom sheet on phones) */
+  --bg:#0b0a09;
+  --panel:rgba(19,17,15,.9);
+  --panel-edge:#302a24;
+  --ink:#ebe3d3;
+  --muted:#9d9281;
+  --brass:#caa45d;
+  --brass-deep:#6f5a32;
+  --ribbon-red:#c4493b;
+  --f-display:"Special Elite","Courier New",Courier,monospace;
+  --f-ui:"Courier Prime","Courier New",Courier,monospace;
+}
+html,body{height:100%}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-ui);font-size:14px;overflow:hidden;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  -webkit-font-smoothing:antialiased}
+#gl{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none}
+.vignette{position:fixed;inset:0;pointer-events:none;background:radial-gradient(120% 90% at 50% 45%,transparent 55%,rgba(0,0,0,.55) 100%)}
+
+
+.toggle{position:fixed;z-index:6;top:calc(16px + env(safe-area-inset-top,0px));right:max(16px,env(safe-area-inset-right,0px));
+  font:700 11px var(--f-ui);letter-spacing:.16em;text-transform:uppercase;color:var(--muted);background:rgba(15,13,11,.55);
+  border:1px solid rgba(202,164,93,.22);border-radius:3px;padding:8px 12px;cursor:pointer;transition:color .2s,border-color .2s}
+.toggle:hover{color:var(--brass);border-color:var(--brass-deep)}
+.toggle.kb{display:none;top:auto;bottom:calc(14px + env(safe-area-inset-bottom,0px))}
+.toolbar{position:fixed;z-index:6;top:calc(16px + env(safe-area-inset-top,0px));right:max(16px,env(safe-area-inset-right,0px));display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.toolbar .toggle{position:static}
+.toggle.warn,.toggle.warn:hover{color:var(--ribbon-red);border-color:var(--ribbon-red)}
+
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.row > label{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:4px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.btn{font:700 12px var(--f-ui);letter-spacing:.06em;color:var(--ink);background:#1d1a17;border:1px solid #3a332b;border-radius:3px;padding:8px 10px;cursor:pointer;flex:1 1 auto}
+.btn:hover{border-color:var(--brass-deep);background:#24201b}
+.btn.primary{background:var(--brass);color:#16120b;border-color:var(--brass)}
+.btn.primary:hover{background:#d8b36c}
+.btn[aria-pressed="true"]{border-color:var(--brass);color:var(--brass)}
+kbd{font:700 11px var(--f-ui);border:1px solid #4a4137;border-bottom-width:2px;border-radius:3px;padding:0 4px;color:var(--ink);background:#1e1b17}
+:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+
+#hint{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));margin:0;
+  font-size:12px;color:var(--muted);letter-spacing:.04em;pointer-events:none;max-width:calc(100% - 32px);line-height:1.5;text-align:center;transition:opacity 1.2s}
+#hint.gone{opacity:0}
+#toast{position:fixed;left:50%;top:calc(18px + env(safe-area-inset-top,0px));transform:translate(-50%,-8px);opacity:0;z-index:25;
+  font:700 13px var(--f-ui);letter-spacing:.04em;background:#1c1915;color:var(--ink);border:1px solid var(--brass-deep);border-radius:3px;
+  padding:9px 14px;transition:opacity .2s,transform .2s;pointer-events:none;max-width:calc(100% - 48px);text-align:center}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+
+#modal{position:fixed;inset:0;z-index:20;background:rgba(5,4,3,.82);display:flex;align-items:center;justify-content:center;
+  padding:calc(16px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) calc(16px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+#modal .sheet{background:var(--panel);border:1px solid var(--panel-edge);border-radius:4px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:min(340px,100%);max-width:min(720px,100%);max-height:100%;box-sizing:border-box}
+#modal img{max-width:100%;max-height:62vh;object-fit:contain;border-radius:2px;background:#000;display:block;margin:0 auto}
+#modal h3{margin:0;font:700 13px var(--f-ui);letter-spacing:.18em;text-transform:uppercase;color:var(--brass)}
+#modal .note{margin:0;color:var(--muted);font-size:12px;line-height:1.5}
+#modal .btn:disabled{opacity:.55;cursor:default}
+
+#loader{position:fixed;inset:0;z-index:30;background:var(--bg);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;transition:opacity .6s}
+#loader p{margin:0;font-family:var(--f-display);font-size:20px;color:var(--ink);letter-spacing:.04em}
+#loader small{color:var(--muted);font-size:12px;letter-spacing:.12em;text-transform:uppercase}
+#loader.gone{opacity:0;pointer-events:none}
+#softkb{position:fixed;left:-200px;top:0;width:60px;height:30px;opacity:0;font-size:16px}
+
+@media (max-width:760px){
+  .toggle.kb{display:block;left:max(16px,env(safe-area-inset-left,0px));right:auto;top:calc(16px + env(safe-area-inset-top,0px));bottom:auto}
+  #hint{bottom:calc(16px + env(safe-area-inset-bottom,0px))}
+}
+@media (prefers-reduced-motion:reduce){#toast,#loader{transition:none}}
+</style>
+</head>
+<body>
+
+<canvas id="gl" tabindex="0" aria-label="Three-dimensional typewriter. Type on your keyboard to use it."></canvas>
+<div class="vignette"></div>
+
+
+<div class="toolbar">
+  <button class="toggle" id="newPaperBtn">New paper</button>
+  <button class="toggle" id="saveScanBtn">Save page</button>
+</div>
+<button class="toggle kb" id="kbBtn">Keyboard</button>
+
+
+<p id="hint">Start typing. <kbd>Enter</kbd> returns the carriage &middot; drag to look around &middot; scroll on the page to roll it</p>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<div id="modal" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <h3 id="modalTitle">Preview</h3>
+    <img id="modalImg" alt="Preview of the typed page">
+    <p class="note" id="modalNote"></p>
+    <div class="row">
+      <button class="btn" id="modalClose">Back to the machine</button>
+      <button class="btn primary" id="modalDownload">Download</button>
+    </div>
+  </div>
+</div>
+
+<div id="loader"><p>Threading the ribbon&hellip;</p><small id="loadMsg">Loading type and steel</small></div>
+<textarea id="softkb" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" aria-label="Typewriter input for touch keyboards"></textarea>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(() => {
+'use strict';
+if (!window.THREE) { document.getElementById('loadMsg').textContent = 'Could not load the 3D engine. Check your connection and reload.'; return; }
+const T = THREE;
+const $ = s => document.querySelector(s);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const rand = (a, b) => a + Math.random() * (b - a);
+const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const DEG = Math.PI / 180;
+function mulberry32(a){ return function(){ a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function makeNoise2D(seed){
+  const rnd = mulberry32(seed), perm = new Uint8Array(512), G = new Float32Array(256);
+  const p = [...Array(256).keys()]; for (let i = 255; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [p[i], p[j]] = [p[j], p[i]]; }
+  for (let i = 0; i < 512; i++) perm[i] = p[i & 255];
+  for (let i = 0; i < 256; i++) G[i] = rnd();
+  const h = (x, y) => G[perm[(perm[x & 255] + y) & 255]];
+  return (x, y) => { const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+    const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    const a = h(xi, yi), b = h(xi + 1, yi), c = h(xi, yi + 1), d = h(xi + 1, yi + 1);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v; };
+}
+const mkCanvas = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+
+/* ============================== constants ============================== */
+const DPI = 200, PW = 1700, PH = 2200;               // 8.5 x 11 in at 200 dpi
+const CM_PER_PX = 2.54 / DPI;
+const PAPER_W = 8.5 * 2.54, PAPER_H = 11 * 2.54;
+const LINE_PX = DPI / 6;                           // six lines to the inch
+const PLATEN = { y: 13, z: -7, r: 1.8, half: 15 };
+const A0 = 5 * DEG;                                // print point angle on the platen
+const RP = PLATEN.r + 0.025;                       // paper radius
+const P = new T.Vector3(0, PLATEN.y + RP * Math.sin(A0), PLATEN.z + RP * Math.cos(A0));
+const SEG_C = new T.Vector3(0, P.y - 2.5, P.z);    // typebar segment centre
+const SEG_R = 5;
+const FAM = { worn: '"Special Elite", "Courier New", monospace', clean: '"Courier Prime", "Courier New", monospace' };
+const INK = { black: [22, 20, 30], red: [170, 30, 26], stencil: [196, 191, 182] };
+const RIBBON_NAME = { black: 'Black', red: 'Red', stencil: 'Stencil' };
+const PAPER_STYLES = {
+  bond:  { base: [245, 243, 236], grain: 10, mottle: .20, fibers: 2400, aged: 0,   laid: false, droop: .08, back: 0xd8d5cc, opacity: 1, cockle: .015 },
+  ivory: { base: [237, 225, 199], grain: 12, mottle: .34, fibers: 2700, aged: 1,   laid: false, droop: .10, back: 0xcfc2a5, opacity: 1, cockle: .03 },
+  laid:  { base: [241, 234, 215], grain: 9,  mottle: .24, fibers: 1900, aged: .3,  laid: true,  droop: .06, back: 0xd3cab4, opacity: 1, cockle: .015 },
+  onion: { base: [240, 239, 233], grain: 7,  mottle: .42, fibers: 3400, aged: 0,   laid: false, droop: .34, back: 0xdcdad2, opacity: .9, cockle: .06 }
+};
+
+/* ============================== state ============================== */
+const S = {
+  cpi: 10, face: 'worn', ribbon: 'black', spacing: 1,
+  leftM: 10, rightM: 75, marRel: false, tabs: new Set([15, 40]),
+  col: 10, feedPx: 0, feedVis: 0, firstLine: 0,
+  paperIn: true, paperStyle: 'ivory', paperAnim: false,
+  shift: false, lock: false, autoShiftUntil: 0,
+  jamOn: true, jammed: false, pending: 0, lastStrike: null,
+  returning: false, queue: [], carX: 0, carOverride: false, shiftVis: 0,
+  ribbonUse: 0, view: 'typist'
+};
+const cell = () => DPI / S.cpi;
+const maxCol = () => Math.floor(PW / cell()) - 1;
+const paperLocalX = col => -PAPER_W / 2 + (col * cell() + cell() / 2) * CM_PER_PX;
+
+/* ============================== renderer & scene ============================== */
+const canvas = $('#gl');
+let renderer;
+try {
+  renderer = new T.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: false });
+} catch (e) { $('#loadMsg').textContent = 'WebGL is not available in this browser.'; return; }
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.outputEncoding = T.sRGBEncoding;
+renderer.toneMapping = T.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = T.PCFSoftShadowMap;
+const MAX_ANISO = renderer.capabilities.getMaxAnisotropy();
+
+const scene = new T.Scene();
+scene.background = new T.Color(0x0a0908);
+scene.fog = new T.Fog(0x0a0908, 110, 230);
+const camera = new T.PerspectiveCamera(34, 1, 0.5, 500);
+
+function buildEnv(){
+  const es = new T.Scene();
+  const room = new T.Mesh(new T.BoxGeometry(80, 50, 80), new T.MeshBasicMaterial({ color: new T.Color(.012, .011, .01), side: T.BackSide }));
+  room.position.y = 18; es.add(room);
+  const panel = (w, h, c, x, y, z) => { const m = new T.Mesh(new T.PlaneGeometry(w, h), new T.MeshBasicMaterial({ color: c, side: T.DoubleSide })); m.position.set(x, y, z); m.lookAt(0, 8, 0); es.add(m); };
+  panel(15, 8, new T.Color(5, 4, 3), -20, 30, 16);        // lamp softbox
+  panel(3, 26, new T.Color(.7, .85, 1.1), 30, 16, -8);    // window strip
+  panel(30, 2, new T.Color(1.1, 1.05, .95), 0, 34, -26);  // ceiling strip
+  panel(8, 6, new T.Color(.5, .42, .34), 14, 24, 28);
+  const fl = new T.Mesh(new T.PlaneGeometry(80, 80), new T.MeshBasicMaterial({ color: new T.Color(.16, .09, .05) }));
+  fl.rotation.x = -Math.PI / 2; fl.position.y = -2; es.add(fl);
+  const pm = new T.PMREMGenerator(renderer);
+  const tex = pm.fromScene(es, 0.025).texture; pm.dispose();
+  return tex;
+}
+scene.environment = buildEnv();
+
+/* lights */
+scene.add(new T.HemisphereLight(0x2a2d36, 0x120c07, 0.55));
+const lamp = new T.SpotLight(0xffd6a6, 2.3, 0, 0.52, 0.75, 1.2);
+lamp.position.set(-24, 52, 30); lamp.target.position.set(0, 9, -3);
+lamp.castShadow = true; lamp.shadow.mapSize.set(2048, 2048); lamp.shadow.bias = -0.00025; lamp.shadow.normalBias = 0.03;
+lamp.shadow.camera.near = 20; lamp.shadow.camera.far = 140; lamp.shadow.radius = 4;
+scene.add(lamp, lamp.target);
+const fill = new T.DirectionalLight(0x8ea5c9, 0.32); fill.position.set(40, 22, 8); scene.add(fill);
+const rim = new T.DirectionalLight(0xffe4bd, 0.55); rim.position.set(6, 30, -40); scene.add(rim);
+
+/* ============================== procedural textures ============================== */
+function woodCanvas(){
+  const W = 1024, H = 1024, c = mkCanvas(W, H), ctx = c.getContext('2d');
+  const id = ctx.createImageData(W, H), d = id.data, n1 = makeNoise2D(7), n2 = makeNoise2D(19), n3 = makeNoise2D(31);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const warp = n1(x / 260, y / 70) * 7 + n2(x / 60, y / 18) * 0.8;
+    const g = Math.sin((y / H * 54 + warp) * Math.PI);
+    const ring = Math.pow(0.5 + 0.5 * g, 2.4);
+    const fine = n3(x / 30, y * 0.9);
+    const plank = (y % 341) < 2 ? 0.55 : 1;
+    let t = clamp(0.25 + ring * 0.45 + (fine - 0.5) * 0.35 + (n2(x / 400, y / 400) - 0.5) * 0.4, 0, 1);
+    const i = (y * W + x) * 4;
+    d[i] = lerp(30, 86, t) * plank; d[i + 1] = lerp(17, 52, t) * plank; d[i + 2] = lerp(10, 30, t) * plank; d[i + 3] = 255;
+  }
+  ctx.putImageData(id, 0, 0);
+  return c;
+}
+function feltCanvas(){
+  const W = 512, c = mkCanvas(W, W), ctx = c.getContext('2d'), id = ctx.createImageData(W, W), d = id.data, n = makeNoise2D(5);
+  for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) {
+    const v = 30 + (Math.random() - .5) * 16 + (n(x / 40, y / 40) - .5) * 10;
+    const i = (y * W + x) * 4; d[i] = v * 0.95; d[i + 1] = v * 1.02; d[i + 2] = v * 0.92; d[i + 3] = 255;
+  }
+  ctx.putImageData(id, 0, 0); return c;
+}
+function toTex(c, srgb = true){ const t = new T.CanvasTexture(c); if (srgb) t.encoding = T.sRGBEncoding; t.anisotropy = MAX_ANISO; return t; }
+
+/* ============================== materials ============================== */
+const M = {
+  enamel: new T.MeshPhysicalMaterial({ color: 0x040405, roughness: 0.5, metalness: 0.0, clearcoat: .85, clearcoatRoughness: 0.05, envMapIntensity: 0.38 }),
+  enamelSoft: new T.MeshStandardMaterial({ color: 0x050506, roughness: 0.78, metalness: 0, envMapIntensity: .22 }),
+  chrome: new T.MeshStandardMaterial({ color: 0xeeeeee, metalness: 1, roughness: 0.12, envMapIntensity: 1.6 }),
+  steel: new T.MeshStandardMaterial({ color: 0x8c8c90, metalness: 1, roughness: 0.36 }),
+  darkSteel: new T.MeshStandardMaterial({ color: 0x3a3a3e, metalness: .9, roughness: .45 }),
+  rubber: new T.MeshStandardMaterial({ color: 0x111111, roughness: 0.62, metalness: 0 }),
+  bakelite: new T.MeshPhysicalMaterial({ color: 0x0b0b0b, roughness: 0.28, clearcoat: .7, clearcoatRoughness: .15 }),
+  glass: new T.MeshPhysicalMaterial({ color: 0x0c0c0e, roughness: 0.04, metalness: 0, transparent: true, opacity: 0.2, envMapIntensity: .7, clearcoat: 1, clearcoatRoughness: 0.02, depthWrite: false }),
+  felt: null, wood: null
+};
+const wood = woodCanvas();
+const woodTex = toTex(wood); woodTex.wrapS = woodTex.wrapT = T.RepeatWrapping; woodTex.repeat.set(2.2, 1.6);
+M.wood = new T.MeshStandardMaterial({ map: woodTex, roughness: 0.62, metalness: 0 });
+const feltTex = toTex(feltCanvas()); feltTex.wrapS = feltTex.wrapT = T.RepeatWrapping; feltTex.repeat.set(5, 5);
+M.felt = new T.MeshStandardMaterial({ map: feltTex, roughness: 1 });
+
+function sh(mesh, cast = true, recv = true){ mesh.castShadow = cast; mesh.receiveShadow = recv; return mesh; }
+function roundRectShape(x0, y0, x1, y1, r){
+  const s = new T.Shape();
+  s.moveTo(x0 + r, y0); s.lineTo(x1 - r, y0); s.quadraticCurveTo(x1, y0, x1, y0 + r);
+  s.lineTo(x1, y1 - r); s.quadraticCurveTo(x1, y1, x1 - r, y1); s.lineTo(x0 + r, y1);
+  s.quadraticCurveTo(x0, y1, x0, y1 - r); s.lineTo(x0, y0 + r); s.quadraticCurveTo(x0, y0, x0 + r, y0);
+  return s;
+}
+
+/* ============================== room ============================== */
+const desk = sh(new T.Mesh(new T.PlaneGeometry(220, 150), M.wood), false, true);
+desk.rotation.x = -Math.PI / 2; scene.add(desk);
+const matGeo = new T.ExtrudeGeometry(roundRectShape(-24, -19, 24, 19, 2.2), { depth: 0.25, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.08, bevelSegments: 2 });
+matGeo.rotateX(-Math.PI / 2);
+const mat = sh(new T.Mesh(matGeo, M.felt), false, true); mat.position.set(0, 0.05, 1); scene.add(mat);
+
+/* ============================== typewriter body ============================== */
+const tw = new T.Group(); tw.position.y = 0.85; scene.add(tw);
+
+// base pan
+{
+  const g = new T.ExtrudeGeometry(roundRectShape(-15.7, -13.1, 15.7, 13.3, 1.2), { depth: 1.2, bevelEnabled: true, bevelThickness: 0.2, bevelSize: 0.2, bevelSegments: 3, curveSegments: 8 });
+  g.rotateX(-Math.PI / 2); g.translate(0, 0.2, 0);
+  tw.add(sh(new T.Mesh(g, M.enamel)));
+  // flip z of rotated shape: shape y -> -z, so mirror
+  for (const [x, z] of [[-13.5, 11], [13.5, 11], [-13.5, -11], [13.5, -11]]) {
+    const f = sh(new T.Mesh(new T.CylinderGeometry(1.1, 1.25, 0.9, 24), M.rubber)); f.position.set(x, -0.35, z); tw.add(f);
+  }
+}
+// side plates
+const SIDE_PROFILE = (() => {
+  const s = new T.Shape();
+  s.moveTo(13.2, 0); s.lineTo(13.2, 2.3); s.quadraticCurveTo(13.1, 2.95, 12.3, 3.15);
+  s.lineTo(3.5, 7.1); s.quadraticCurveTo(1.0, 8.2, 0.3, 9.9); s.quadraticCurveTo(-0.2, 10.6, -1.2, 10.6);
+  s.lineTo(-12.2, 10.6); s.quadraticCurveTo(-13, 10.6, -13, 9.8); s.lineTo(-13, 0); s.lineTo(13.2, 0);
+  return s;
+})();
+for (const side of [-1, 1]) {
+  const g = new T.ExtrudeGeometry(SIDE_PROFILE, { depth: 0.9, bevelEnabled: true, bevelThickness: 0.22, bevelSize: 0.2, bevelSegments: 4, curveSegments: 16 });
+  const m = sh(new T.Mesh(g, M.enamel)); m.rotation.y = -Math.PI / 2;
+  m.position.x = side < 0 ? -14.6 : 15.5; tw.add(m);
+}
+// front apron, rear panel
+{ const a = sh(new T.Mesh(new T.BoxGeometry(29.6, 2.3, 0.6), M.enamel)); a.position.set(0, 1.15, 13.05); tw.add(a);
+  const r = sh(new T.Mesh(new T.BoxGeometry(29.2, 10.3, 0.5), M.enamel)); r.position.set(0, 5.2, -12.85); tw.add(r); }
+// comb plate (sloped bank under the keys) and key-lever cover
+const plateY = z => 2.25 + (12.6 - z) / 9.6 * 4.05;
+{
+  const len = Math.hypot(9.6, 4.05), a = Math.atan2(4.05, 9.6);
+  const m = sh(new T.Mesh(new T.BoxGeometry(29.2, 0.2, len), M.enamelSoft)); m.position.set(0, plateY(7.8), 7.8); m.rotation.x = a; tw.add(m);
+  const len2 = Math.hypot(3.2, 3.85), a2 = Math.atan2(3.85, 3.2);
+  const m2 = sh(new T.Mesh(new T.BoxGeometry(29.2, 0.2, len2), M.enamel)); m2.position.set(0, (6.3 + 10.15) / 2, 1.4); m2.rotation.x = a2; tw.add(m2);
+}
+// deck with the typebar opening
+{
+  const NR = 6.5, cz = SEG_C.z, fz = -0.2;
+  const dx = Math.sqrt(NR * NR - (fz - cz) * (fz - cz));
+  const s = new T.Shape();
+  s.moveTo(-14.6, -13); s.lineTo(14.6, -13); s.lineTo(14.6, fz); s.lineTo(dx, fz);
+  const aS = Math.atan2(fz - cz, dx), aE = Math.atan2(fz - cz, -dx);
+  s.absarc(0, cz, NR, aS, aE, true);
+  s.lineTo(-14.6, fz); s.lineTo(-14.6, -13);
+  // shape (x, y) where y = z; rotate +90 about x so y -> -z... use mirror: build with y = -z then rotate -90
+  const g = new T.ExtrudeGeometry(s, { depth: 0.45, bevelEnabled: true, bevelThickness: 0.06, bevelSize: 0.06, bevelSegments: 2, curveSegments: 48 });
+  g.rotateX(Math.PI / 2);          // shape y -> +z? (y,z)->(y cos - z sin, y sin + z cos) with 90: (-z, y)
+  const m = sh(new T.Mesh(g, M.enamel)); m.position.y = 10.6; tw.add(m);
+}
+// typebar segment
+{
+  const g = new T.TorusGeometry(SEG_R, 0.32, 12, 80, 164 * DEG);
+  g.rotateZ(-172 * DEG); g.rotateX(-Math.PI / 2);
+  const m = sh(new T.Mesh(g, M.darkSteel)); m.position.copy(SEG_C); tw.add(m);
+  const hub = sh(new T.Mesh(new T.CylinderGeometry(SEG_R + 0.4, SEG_R + 0.7, 0.5, 64, 1, true, -82 * DEG, 164 * DEG), M.enamelSoft));
+  hub.position.set(SEG_C.x, SEG_C.y - 0.55, SEG_C.z); tw.add(hub);
+}
+// rail bearings on the deck
+for (const x of [-12.5, 12.5]) { const b = sh(new T.Mesh(new T.BoxGeometry(1.6, 0.8, 3.0), M.enamel)); b.position.set(x, 10.95, -11.2); tw.add(b); }
+
+/* gold decals */
+function decalApron(){
+  const c = mkCanvas(2048, 136), x = c.getContext('2d');
+  const gold = x.createLinearGradient(0, 0, 0, 136); gold.addColorStop(0, '#f2d58f'); gold.addColorStop(.5, '#b8893e'); gold.addColorStop(1, '#e6c47a');
+  x.strokeStyle = gold; x.lineWidth = 5; x.strokeRect(20, 14, 2008, 108); x.lineWidth = 2; x.strokeRect(34, 28, 1980, 80);
+  x.fillStyle = gold; x.font = 'italic 700 66px Georgia, "Times New Roman", serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText('H a l c y o n', 1024, 70);
+  x.font = '700 26px "Courier Prime", monospace'; x.fillText('STANDARD  No.7', 330, 70); x.fillText('SERIAL 7-30418', 1718, 70);
+  const t = toTex(c); const m = new T.Mesh(new T.PlaneGeometry(28.6, 1.9), new T.MeshStandardMaterial({ map: t, transparent: true, metalness: .6, roughness: .35 }));
+  m.position.set(0, 1.35, 13.36); tw.add(m);
+}
+function decalSides(){
+  const W = 1024, H = 416, c = mkCanvas(W, H), x = c.getContext('2d');
+  const zx = z => (z + 13.2) / 26.6 * W, yy = y => (1 - y / 10.8) * H;
+  x.strokeStyle = '#d9b46a'; x.lineWidth = 3.2; x.lineJoin = 'round';
+  x.beginPath();
+  const pts = [[12.5, 0.8], [12.5, 2.15], [11.8, 2.5], [3.3, 6.35], [1.0, 7.5], [-0.3, 9.4], [-1.3, 9.85], [-12.2, 9.85], [-12.2, 0.8]];
+  pts.forEach(([z, y], i) => i ? x.lineTo(zx(z), yy(y)) : x.moveTo(zx(z), yy(y)));
+  x.closePath(); x.stroke();
+  x.lineWidth = 1.2; x.beginPath();
+  [[12.0, 1.15], [12.0, 1.95], [11.5, 2.2], [3.1, 6.0], [0.9, 7.1], [-0.6, 9.0], [-1.4, 9.45], [-11.8, 9.45], [-11.8, 1.15]].forEach(([z, y], i) => i ? x.lineTo(zx(z), yy(y)) : x.moveTo(zx(z), yy(y)));
+  x.closePath(); x.stroke();
+  const mk = (flip, px) => {
+    const t = toTex(c); if (flip) { t.wrapS = T.RepeatWrapping; t.repeat.x = -1; t.offset.x = 1; }
+    const m = new T.Mesh(new T.PlaneGeometry(26.6, 10.8), new T.MeshStandardMaterial({ map: t, transparent: true, metalness: .7, roughness: .3, depthWrite: false }));
+    m.position.set(px, 5.4, 0.1); m.rotation.y = flip ? Math.PI / 2 : -Math.PI / 2; tw.add(m);
+  };
+  mk(false, -15.84); mk(true, 15.84);
+}
+
+/* ============================== keyboard ============================== */
+const KEY_SP = 1.92;
+const ROWS = [
+  { z: 4.5,  y: 7.0, off: -0.25, keys: [{ sp: 'marrel', lab: 'MAR\nREL' }, ['1','!'],['2','@'],['3','#'],['4','$'],['5','%'],['6','¢'],['7','&'],['8','*'],['9','('],['0',')'],['-','_'],['=','+'], { sp: 'back', lab: 'BACK\nSPACE' }] },
+  { z: 6.8,  y: 5.9, off: 0.35,  keys: [{ sp: 'tab', lab: 'TAB' }, ...'qwertyuiop'.split('').map(c => [c, c.toUpperCase()]), ['½','¼']] },
+  { z: 9.1,  y: 4.8, off: 0.75,  keys: [{ sp: 'lock', lab: 'SHIFT\nLOCK' }, ...'asdfghjkl'.split('').map(c => [c, c.toUpperCase()]), [';',':'], ["'",'"']] },
+  { z: 11.4, y: 3.7, off: 0.15,  keys: [{ sp: 'shift', lab: 'SHIFT' }, ...'zxcvbnm'.split('').map(c => [c, c.toUpperCase()]), [',',','], ['.','.'], ['/','?'], { sp: 'shift', lab: 'SHIFT' }] }
+];
+const keys = [], charKeys = [], pickables = [];
+const CHARMAP = {};
+let rimGeo, domeGeo, discGeo;
+
+function keyLabelTex(def){
+  const c = mkCanvas(128, 128), x = c.getContext('2d');
+  const g = x.createRadialGradient(54, 50, 4, 64, 64, 64); g.addColorStop(0, '#202022'); g.addColorStop(1, '#050506');
+  x.fillStyle = g; x.fillRect(0, 0, 128, 128);
+  x.strokeStyle = 'rgba(255,255,255,.12)'; x.lineWidth = 2; x.beginPath(); x.arc(64, 64, 58, 0, Math.PI * 2); x.stroke();
+  x.fillStyle = '#f1ede2'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  if (def.sp) {
+    const lines = def.lab.split('\n'); x.font = `700 ${lines.length > 1 ? 23 : 26}px "Courier Prime", monospace`;
+    lines.forEach((l, i) => x.fillText(l, 64, 64 + (i - (lines.length - 1) / 2) * 26));
+  } else if (/^[a-z]$/.test(def.lo)) {
+    x.font = '700 64px "Courier Prime", monospace'; x.fillText(def.hi, 64, 68);
+  } else if (def.lo === def.hi) {
+    x.font = '700 64px "Courier Prime", monospace'; x.fillText(def.lo, 64, 60);
+  } else {
+    x.font = '700 42px "Courier Prime", monospace'; x.fillText(def.hi, 64, 40); x.fillText(def.lo, 64, 90);
+  }
+  return toTex(c);
+}
+function makeKey(def, x, y, z, small){
+  const g = new T.Group(); g.position.set(x, y, z); tw.add(g);
+  const cap = new T.Group(); g.add(cap);
+  const sc = small ? 0.72 : 1;
+  const stemLen = y - plateY(z) + 0.4;
+  const stem = sh(new T.Mesh(new T.BoxGeometry(0.2, stemLen, 0.22), M.steel)); stem.position.y = -stemLen / 2; cap.add(stem);
+  const rim = sh(new T.Mesh(rimGeo, M.chrome)); rim.scale.setScalar(sc); cap.add(rim);
+  const disc = new T.Mesh(discGeo, new T.MeshStandardMaterial({ map: keyLabelTex(def), roughness: .5, metalness: 0, envMapIntensity: .35 }));
+  disc.rotation.x = -Math.PI / 2; disc.position.y = 0.16 * sc; disc.scale.setScalar(sc); disc.receiveShadow = true; cap.add(disc);
+  const dome = new T.Mesh(domeGeo, M.glass); dome.position.y = (0.26 - 2.23) * sc; dome.scale.setScalar(sc); cap.add(dome);
+  const key = Object.assign({}, def, { group: g, cap, press: 0, downUntil: 0, held: false, x, y, z, bar: null });
+  [rim, disc, stem].forEach(m => { m.userData = { type: 'key', key }; pickables.push(m); });
+  keys.push(key);
+  return key;
+}
+function buildKeyboard(){
+  rimGeo = new T.LatheGeometry([[0.3, -0.16], [0.7, -0.16], [0.82, -0.13], [0.85, 0.1], [0.81, 0.22], [0.7, 0.21], [0.64, 0.07]].map(([a, b]) => new T.Vector2(a, b)), 40);
+  domeGeo = new T.SphereGeometry(2.23, 32, 6, 0, Math.PI * 2, 0, 0.30);
+  discGeo = new T.CircleGeometry(0.66, 40);
+  for (const row of ROWS) {
+    const n = row.keys.length;
+    row.keys.forEach((k, i) => {
+      const x = (i - (n - 1) / 2) * KEY_SP + row.off;
+      const def = Array.isArray(k) ? { lo: k[0], hi: k[1] } : { sp: k.sp, lab: k.lab };
+      const key = makeKey(def, x, row.y, row.z);
+      if (!def.sp) charKeys.push(key);
+    });
+  }
+  // space bar
+  const sg0 = new T.Group(); sg0.position.set(0, 2.85, 12.75); tw.add(sg0); const sg = new T.Group(); sg0.add(sg);
+  const bar = sh(new T.Mesh(new T.ExtrudeGeometry(roundRectShape(-7.6, -0.32, 7.6, 0.32, 0.3), { depth: 0.55, bevelEnabled: true, bevelThickness: .08, bevelSize: .08, bevelSegments: 3 }), M.enamel));
+  bar.position.z = -0.27; sg.add(bar);
+  const trim = sh(new T.Mesh(new T.BoxGeometry(15.4, 0.06, 0.62), M.chrome)); trim.position.y = 0.36; sg.add(trim);
+  for (const ax of [-5.5, 5.5]) { const arm = sh(new T.Mesh(new T.BoxGeometry(0.22, 0.22, 2.4), M.steel)); arm.position.set(ax, -0.3, -1.3); arm.rotation.x = -0.25; sg.add(arm); }
+  const spaceKey = { sp: 'space', group: sg0, cap: sg, press: 0, downUntil: 0, held: false, x: 0, y: 2.85, z: 12.75 };
+  [bar, trim].forEach(m => { m.userData = { type: 'key', key: spaceKey }; pickables.push(m); });
+  keys.push(spaceKey);
+  // tab set / clear keys flanking the space bar
+  makeKey({ sp: 'tabset', lab: 'TAB\nSET' }, -12.4, 3.0, 12.5, true);
+  makeKey({ sp: 'tabclr', lab: 'TAB\nCLR' }, 12.4, 3.0, 12.5, true);
+  // character map
+  for (const k of charKeys) { if (!(k.lo in CHARMAP)) CHARMAP[k.lo] = { key: k, shifted: false }; if (!(k.hi in CHARMAP)) CHARMAP[k.hi] = { key: k, shifted: true }; }
+  CHARMAP['^'] = CHARMAP['¢']; CHARMAP['['] = CHARMAP['½']; CHARMAP['{'] = CHARMAP['¼']; CHARMAP['`'] = CHARMAP["'"];
+}
+const keyBy = sp => keys.filter(k => k.sp === sp);
+
+/* ============================== typebars ============================== */
+const bars = [];
+function buildTypebars(){
+  const sorted = [...charKeys].sort((a, b) => a.x - b.x || a.z - b.z);
+  const n = sorted.length, span = 78 * DEG;
+  const slugGeo = new T.BoxGeometry(0.46, 0.62, 0.34);
+  sorted.forEach((key, i) => {
+    const th = -span + (2 * span) * i / (n - 1);
+    const Q = new T.Vector3(SEG_C.x + SEG_R * Math.sin(th), SEG_C.y, SEG_C.z + SEG_R * Math.cos(th));
+    const t = new T.Vector3(Math.cos(th), 0, -Math.sin(th));
+    const dvec = P.clone().sub(Q); const L = dvec.length() - 0.18; dvec.normalize();
+    const Z = new T.Vector3().crossVectors(t, dvec);
+    const pivot = new T.Object3D(); pivot.position.copy(Q);
+    pivot.quaternion.setFromRotationMatrix(new T.Matrix4().makeBasis(t, dvec, Z));
+    const swing = new T.Object3D(); pivot.add(swing);
+    const b = sh(new T.Mesh(new T.BoxGeometry(0.1, L, 0.26), M.steel)); b.position.y = L / 2; swing.add(b);
+    const slug = sh(new T.Mesh(slugGeo, M.chrome)); slug.position.set(0, L - 0.26, 0.04); swing.add(slug);
+    const hub = new T.Mesh(new T.CylinderGeometry(0.2, 0.2, 0.3, 12), M.darkSteel); hub.rotation.z = Math.PI / 2; swing.add(hub);
+    tw.add(pivot);
+    const rest = (163 + Math.random() * 2) * DEG;
+    const bar = { key, pivot, swing, rest, angle: rest, phase: 'idle', t0: 0, t1: 0, jamAt: 0, printed: false, ch: '' };
+    swing.rotation.x = rest;
+    [b, slug].forEach(m => { m.userData = { type: 'bar', bar }; pickables.push(m); });
+    key.bar = bar; bars.push(bar);
+  });
+}
+
+/* ============================== ribbon, spools, type guide ============================== */
+const RIB = { z: P.z + 0.33, y0: P.y - 0.92, w: 1.27, half: 12, lift: 0, liftTarget: 0 };
+let ribbonMesh, ribbonPos, vibrator, spools = [];
+function buildRibbon(){
+  const N = 80, rows = [0.5, 0, 0, -0.5];
+  const geo = new T.BufferGeometry(), pos = new Float32Array(N * 4 * 3), col = new Float32Array(N * 4 * 3), idx = [];
+  const black = [0.014, 0.013, 0.016], red = [0.16, 0.012, 0.01];
+  for (let i = 0; i < N; i++) for (let r = 0; r < 4; r++) {
+    const v = i * 4 + r; const c = r < 2 ? black : red;
+    col.set(c, v * 3);
+  }
+  for (let i = 0; i < N - 1; i++) for (let r = 0; r < 3; r++) { if (r === 1) continue; const a = i * 4 + r, b = a + 1, c = a + 4, d = c + 1; idx.push(a, b, c, c, b, d); }
+  geo.setAttribute('position', new T.BufferAttribute(pos, 3)); geo.setAttribute('color', new T.BufferAttribute(col, 3)); geo.setIndex(idx);
+  ribbonMesh = sh(new T.Mesh(geo, new T.MeshStandardMaterial({ vertexColors: true, roughness: .92, side: T.DoubleSide })));
+  ribbonMesh.userData.N = N; ribbonMesh.userData.rows = rows; tw.add(ribbonMesh);
+  ribbonPos = pos;
+  // vibrator fork
+  vibrator = new T.Group();
+  for (const sx of [-0.62, 0.62]) { const p = sh(new T.Mesh(new T.BoxGeometry(0.09, 1.45, 0.07), M.chrome)); p.position.set(sx, 0, 0); vibrator.add(p); }
+  const bot = sh(new T.Mesh(new T.BoxGeometry(1.33, 0.09, 0.07), M.chrome)); bot.position.y = -0.7; vibrator.add(bot);
+  vibrator.position.set(0, RIB.y0, RIB.z + 0.08); tw.add(vibrator);
+  updateRibbon(true);
+  // type guide / card holder
+  const cg = new T.Group(); cg.position.set(0, P.y, P.z + 0.11); tw.add(cg);
+  for (const sx of [-1, 1]) {
+    const p = sh(new T.Mesh(new T.BoxGeometry(1.5, 0.5, 0.05), M.chrome)); p.position.set(sx * 1.25, -0.42, 0); cg.add(p);
+    const up = sh(new T.Mesh(new T.BoxGeometry(0.16, 0.95, 0.05), M.chrome)); up.position.set(sx * 0.6, 0.02, 0); cg.add(up);
+  }
+  const mark = new T.Mesh(new T.BoxGeometry(0.03, 0.22, 0.06), new T.MeshBasicMaterial({ color: 0xb02a20 })); mark.position.set(0, -0.34, 0.01); cg.add(mark);
+  // spools
+  const woundTex = (() => { const c = mkCanvas(64, 64), x = c.getContext('2d'); x.fillStyle = '#060607'; x.fillRect(0, 0, 64, 32); x.fillStyle = '#5a0b08'; x.fillRect(0, 32, 64, 32);
+    for (let i = 0; i < 400; i++) { x.fillStyle = `rgba(255,255,255,${Math.random() * .05})`; x.fillRect(Math.random() * 64, Math.random() * 64, 1, 1); } return toTex(c); })();
+  for (const sx of [-1, 1]) {
+    const g = new T.Group(); g.position.set(sx * RIB.half, 0, RIB.z + 1.2); tw.add(g);
+    const post = sh(new T.Mesh(new T.CylinderGeometry(0.16, 0.16, 3.2, 12), M.steel)); post.position.y = 10.6 + 1.6; g.add(post);
+    const spin = new T.Group(); g.add(spin);
+    const wound = sh(new T.Mesh(new T.CylinderGeometry(1.2, 1.2, RIB.w, 40), new T.MeshStandardMaterial({ map: woundTex, roughness: .95 }))); wound.position.y = RIB.y0; spin.add(wound);
+    for (const dy of [-RIB.w / 2 - 0.05, RIB.w / 2 + 0.05]) {
+      const cup = sh(new T.Mesh(new T.CylinderGeometry(1.48, 1.48, 0.08, 48), M.chrome)); cup.position.y = RIB.y0 + dy; spin.add(cup);
+    }
+    for (let k = 0; k < 4; k++) { const sp = sh(new T.Mesh(new T.BoxGeometry(2.6, 0.06, 0.18), M.chrome)); sp.position.y = RIB.y0 + RIB.w / 2 + 0.11; sp.rotation.y = k * Math.PI / 4; spin.add(sp); }
+    const cap = sh(new T.Mesh(new T.SphereGeometry(0.32, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), M.chrome)); cap.position.y = RIB.y0 + RIB.w / 2 + 0.15; spin.add(cap);
+    const base = sh(new T.Mesh(new T.CylinderGeometry(0.9, 1.1, 0.35, 32), M.enamel)); base.position.y = 10.75; g.add(base);
+    spools.push(spin);
+  }
+}
+function updateRibbon(force){
+  const target = RIB.liftTarget;
+  if (!force && Math.abs(RIB.lift - target) < 1e-4) return;
+  RIB.lift = target;
+  const N = ribbonMesh.userData.N, rows = ribbonMesh.userData.rows;
+  for (let i = 0; i < N; i++) {
+    const x = -RIB.half + (2 * RIB.half) * i / (N - 1);
+    const ax = Math.abs(x); const bump = ax < 1.0 ? 1 : Math.pow(Math.max(0, 1 - (ax - 1.0) / 5.5), 2);
+    const yc = RIB.y0 + RIB.lift * bump;
+    for (let r = 0; r < 4; r++) { const v = (i * 4 + r) * 3; ribbonPos[v] = x; ribbonPos[v + 1] = yc + rows[r] * RIB.w; ribbonPos[v + 2] = RIB.z - 0.06 * (1 - bump) * 0; }
+  }
+  ribbonMesh.geometry.attributes.position.needsUpdate = true; ribbonMesh.geometry.computeVertexNormals();
+  vibrator.position.y = RIB.y0 + RIB.lift;
+}
+
+/* ribbon selector lever on the deck */
+let ribbonLever;
+function buildRibbonSelector(){
+  const g = new T.Group(); g.position.set(12.6, 10.62, -1.45); tw.add(g);
+  const plate = sh(new T.Mesh(new T.CylinderGeometry(1.0, 1.0, 0.08, 32, 1, false, -Math.PI / 2, Math.PI), M.enamel)); g.add(plate);
+  // black, red and white buttons in chrome bezels; colours converted to linear so they render true (not grey / orange)
+  const bezelGeo = new T.TorusGeometry(0.19, 0.035, 8, 32); bezelGeo.rotateX(Math.PI / 2);
+  [[0x0a0a0c, 0x000000, -0.6], [0xc8000f, 0x500003, 0], [0xffffff, 0x9a9a9a, 0.6]].forEach(([c, e, a]) => {
+    const mat = new T.MeshStandardMaterial({ color: new T.Color(c).convertSRGBToLinear(), emissive: new T.Color(e).convertSRGBToLinear(), roughness: .7, envMapIntensity: .2 });
+    const px = Math.sin(a) * 0.68, pz = Math.cos(a) * 0.68;
+    const d = new T.Mesh(new T.CylinderGeometry(0.18, 0.18, 0.12, 24), mat); d.position.set(px, 0.07, pz); g.add(d);
+    const bz = new T.Mesh(bezelGeo, M.chrome); bz.position.set(px, 0.12, pz); g.add(bz);
+  });
+  ribbonLever = new T.Group(); g.add(ribbonLever);
+  const arm = sh(new T.Mesh(new T.BoxGeometry(0.14, 0.14, 1.0), M.chrome)); arm.position.set(0, 0.25, 0.5); ribbonLever.add(arm);
+  const knob = sh(new T.Mesh(new T.SphereGeometry(0.2, 16, 12), M.bakelite)); knob.position.set(0, 0.25, 1.1); ribbonLever.add(knob);
+  [arm, knob, plate].forEach(m => { m.userData = { type: 'ribbonSel' }; pickables.push(m); });
+}
+const RIBBON_ANGLE = { black: -0.6, red: 0, stencil: 0.6 };
+
+/* ============================== carriage ============================== */
+const carriage = new T.Group(); tw.add(carriage);
+let platenRot, paperMesh, paperBack, paperGeo, bailScale, bailScaleCanvas, returnLever, lineLever, releaseLever, paperTable;
+const knobs = [];
+function buildCarriage(){
+  platenRot = new T.Group(); platenRot.position.set(0, PLATEN.y, PLATEN.z); carriage.add(platenRot);
+  const platen = sh(new T.Mesh(new T.CylinderGeometry(PLATEN.r, PLATEN.r, 30, 72), M.rubber)); platen.rotation.z = Math.PI / 2; platenRot.add(platen);
+  platen.userData = { type: 'knob' }; pickables.push(platen);
+  for (const sx of [-1, 1]) {
+    const hub = sh(new T.Mesh(new T.CylinderGeometry(1.0, 1.0, 0.6, 40), M.chrome)); hub.rotation.z = Math.PI / 2; hub.position.x = sx * 15.25; platenRot.add(hub);
+    // knurled knob
+    const s = new T.Shape(); const NP = 220;
+    for (let i = 0; i <= NP; i++) { const a = i / NP * Math.PI * 2; const r = 1.45 - 0.07 * Math.pow(0.5 + 0.5 * Math.cos(36 * a), 4); const px = Math.cos(a) * r, py = Math.sin(a) * r; i ? s.lineTo(px, py) : s.moveTo(px, py); }
+    const kg = new T.ExtrudeGeometry(s, { depth: 1.35, bevelEnabled: true, bevelThickness: 0.18, bevelSize: 0.12, bevelSegments: 4, curveSegments: 4 });
+    kg.translate(0, 0, -0.675); kg.rotateY(Math.PI / 2);
+    const k = sh(new T.Mesh(kg, M.bakelite)); k.position.x = sx * 16.55; platenRot.add(k);
+    const capc = sh(new T.Mesh(new T.CylinderGeometry(0.75, 0.9, 0.18, 40), M.chrome)); capc.rotation.z = Math.PI / 2; capc.position.x = sx * 17.42; platenRot.add(capc);
+    k.userData = { type: 'knob' }; pickables.push(k); knobs.push(k);
+    // carriage end plates
+    const ep = new T.ExtrudeGeometry(roundRectShape(-12.6, 10.9, -5.9, 15.2, 1.4), { depth: 0.45, bevelEnabled: true, bevelThickness: .08, bevelSize: .08, bevelSegments: 2 });
+    const epm = sh(new T.Mesh(ep, M.enamel)); epm.rotation.y = -Math.PI / 2; epm.position.x = sx < 0 ? -14.55 : 15.0; carriage.add(epm);
+  }
+  // rails
+  for (const z of [-10.6, -12.0]) { const r = sh(new T.Mesh(new T.CylinderGeometry(0.22, 0.22, 30, 16), M.chrome)); r.rotation.z = Math.PI / 2; r.position.set(0, 11.4, z); carriage.add(r); }
+  const rack = sh(new T.Mesh(new T.BoxGeometry(29.2, 0.5, 0.3), M.darkSteel)); rack.position.set(0, 11.9, -11.3); carriage.add(rack);
+  // paper table (behind the platen, carrying the tail of the sheet)
+  const tg = new T.ExtrudeGeometry(roundRectShape(-12.5, 0, 12.5, 11, 0.8), { depth: 0.12, bevelEnabled: true, bevelThickness: .04, bevelSize: .05, bevelSegments: 2 });
+  paperTable = sh(new T.Mesh(tg, M.enamel)); carriage.add(paperTable);
+  // paper bail
+  const bail = new T.Group(); carriage.add(bail); carriage.userData.bail = bail;
+  const rod = sh(new T.Mesh(new T.CylinderGeometry(0.1, 0.1, 27.4, 16), M.chrome)); rod.rotation.z = Math.PI / 2; bail.add(rod);
+  for (const rx of [-5.2, 5.2]) { const rl = sh(new T.Mesh(new T.CylinderGeometry(0.27, 0.27, 0.9, 24), M.rubber)); rl.rotation.z = Math.PI / 2; rl.position.x = rx; bail.add(rl); }
+  bailScaleCanvas = mkCanvas(2048, 64);
+  bailScale = new T.Mesh(new T.PlaneGeometry(PAPER_W, 0.46), new T.MeshStandardMaterial({ map: toTex(bailScaleCanvas), metalness: .55, roughness: .32 }));
+  bailScale.position.y = 0.52; bail.add(bailScale);
+  carriage.userData.bailArms = [];
+  for (const sx of [-1, 1]) { const arm = sh(new T.Mesh(new T.BoxGeometry(0.16, 0.16, 1), M.chrome)); arm.position.x = sx * 13.7; carriage.add(arm); carriage.userData.bailArms.push(arm); }
+  // carriage return lever (left)
+  returnLever = new T.Group(); returnLever.position.set(-15.1, 15.25, -6.4); carriage.add(returnLever);
+  const mount = sh(new T.Mesh(new T.BoxGeometry(0.7, 0.6, 1.2), M.chrome)); returnLever.add(mount);
+  const curve = new T.CatmullRomCurve3([new T.Vector3(0, 0, 0), new T.Vector3(-1.2, 0.2, 0.9), new T.Vector3(-2.4, 0.42, 2.6), new T.Vector3(-3.0, 0.48, 3.9)]);
+  const armM = sh(new T.Mesh(new T.TubeGeometry(curve, 40, 0.15, 12, false), M.chrome)); returnLever.add(armM);
+  const pad = sh(new T.Mesh(new T.ExtrudeGeometry(roundRectShape(-0.5, -0.7, 0.5, 0.7, 0.45), { depth: 0.18, bevelEnabled: true, bevelThickness: .06, bevelSize: .06, bevelSegments: 3 }), M.chrome));
+  pad.rotation.x = -Math.PI / 2 + 0.25; pad.position.set(-3.05, 0.42, 4.2); returnLever.add(pad);
+  [mount, armM, pad].forEach(m => { m.userData = { type: 'return' }; pickables.push(m); });
+  // line space lever (left, on the end plate) and paper release (right)
+  lineLever = new T.Group(); lineLever.position.set(-14.4, 15.25, -9.2); carriage.add(lineLever);
+  const ll = sh(new T.Mesh(new T.BoxGeometry(0.16, 1.2, 0.16), M.chrome)); ll.position.y = 0.6; lineLever.add(ll);
+  const llk = sh(new T.Mesh(new T.SphereGeometry(0.22, 16, 12), M.bakelite)); llk.position.y = 1.25; lineLever.add(llk);
+  [ll, llk].forEach(m => { m.userData = { type: 'lineSpace' }; pickables.push(m); });
+  releaseLever = new T.Group(); releaseLever.position.set(14.6, 15.2, -9.4); carriage.add(releaseLever);
+  const rl2 = sh(new T.Mesh(new T.BoxGeometry(0.2, 0.2, 2.2), M.chrome)); rl2.position.z = 1.0; rl2.rotation.x = -0.35; releaseLever.add(rl2);
+  const rlk = sh(new T.Mesh(new T.BoxGeometry(0.55, 0.3, 0.55), M.bakelite)); rlk.position.set(0, 0.4, 2.0); releaseLever.add(rlk);
+  [rl2, rlk].forEach(m => { m.userData = { type: 'release' }; pickables.push(m); });
+}
+
+/* ============================== paper path ============================== */
+const PATH = { ds: 0.05, max: 62, ys: null, zs: null, n: 0 };
+function buildPath(style){
+  const st = PAPER_STYLES[style], ds = PATH.ds, n = Math.round(PATH.max / ds);
+  const ys = new Float32Array(2 * n + 1), zs = new Float32Array(2 * n + 1);
+  const put = (i, y, z) => { ys[n + i] = y; zs[n + i] = z; };
+  // forward: over the front of the platen and up past the bail
+  let a = A0, y = PLATEN.y + RP * Math.sin(a), z = PLATEN.z + RP * Math.cos(a), free = 0; const a1 = 22 * DEG;
+  put(0, y, z);
+  for (let i = 1; i <= n; i++) {
+    if (a < a1 - 1e-6) { a = Math.min(a1, a + ds / RP); y = PLATEN.y + RP * Math.sin(a); z = PLATEN.z + RP * Math.cos(a); }
+    else { free += ds; const L = a1 + 6 * DEG * (1 - Math.exp(-free / 4)) + st.droop * Math.pow(free / 20, 2); y += ds * Math.cos(L); z -= ds * Math.sin(L); }
+    put(i, y, z);
+  }
+  // backward: around the bottom and back of the platen, then up onto the paper table
+  a = A0; y = PLATEN.y + RP * Math.sin(a); z = PLATEN.z + RP * Math.cos(a); free = 0; const a2 = -165 * DEG;
+  for (let i = 1; i <= n; i++) {
+    if (a > a2 + 1e-6) { a = Math.max(a2, a - ds / RP); y = PLATEN.y + RP * Math.sin(a); z = PLATEN.z + RP * Math.cos(a); }
+    else { free += ds; const L = 15 * DEG + 19 * DEG * (1 - Math.exp(-free / 2.5)) + st.droop * 0.5 * Math.pow(free / 20, 2); y += ds * Math.cos(L); z -= ds * Math.sin(L); }
+    put(-i, y, z);
+  }
+  PATH.ys = ys; PATH.zs = zs; PATH.n = n;
+  // paper table sits under the tail, at ~34 degrees
+  const tail = pathAt(-(RP * (A0 - a2)) - 1.5), ty = tail.y, tz = tail.z;
+  const L = 31 * DEG, by = -Math.sin(L), bz = -Math.cos(L);
+  paperTable.rotation.set(-L, 0, 0);
+  paperTable.position.set(0, ty + by * 0.42 - Math.cos(L) * 1.0, tz + bz * 0.42 + Math.sin(L) * 1.0);
+  // bail rests on the paper, 3 cm above the print line
+  const b = pathAt(3.0), bail = carriage.userData.bail;
+  bail.position.set(0, b.y + b.ny * 0.2, b.z + b.nz * 0.2);
+  bail.quaternion.setFromRotationMatrix(new T.Matrix4().lookAt(new T.Vector3(0, 0, 0), new T.Vector3(0, -b.ny, -b.nz), new T.Vector3(0, 1, 0)));
+  for (const arm of carriage.userData.bailArms) {
+    const p0 = new T.Vector3(arm.position.x, bail.position.y, bail.position.z), p1 = new T.Vector3(arm.position.x, PLATEN.y, PLATEN.z);
+    arm.position.copy(p0).add(p1).multiplyScalar(0.5); arm.scale.z = p0.distanceTo(p1); arm.lookAt(p1.clone().add(tw.position).add(carriage.position));
+  }
+}
+const _pa = { y: 0, z: 0, ny: 0, nz: 1 };
+function pathAt(s){
+  const n = PATH.n, f = clamp(s / PATH.ds, -n, n - 1e-3), i = Math.floor(f), t = f - i;
+  const k = n + i, y = lerp(PATH.ys[k], PATH.ys[k + 1], t), z = lerp(PATH.zs[k], PATH.zs[k + 1], t);
+  const k2 = Math.min(k + 1, 2 * n), k1 = Math.max(k2 - 1, 0);
+  let dy = PATH.ys[k2] - PATH.ys[k1], dz = PATH.zs[k2] - PATH.zs[k1]; const l = Math.hypot(dy, dz) || 1; dy /= l; dz /= l;
+  _pa.y = y; _pa.z = z; _pa.ny = -dz; _pa.nz = dy; return _pa;
+}
+
+/* ============================== paper canvases ============================== */
+const paperBase = mkCanvas(PW, PH), paperInk = mkCanvas(PW, PH), paperTexC = mkCanvas(PW, PH);
+const bctx = paperBase.getContext('2d', { willReadFrequently: true }), ictx = paperInk.getContext('2d'), tctx = paperTexC.getContext('2d');
+const paperTex = toTex(paperTexC);
+const glyphC = mkCanvas(128, 128), gctx = glyphC.getContext('2d');
+const blurC = mkCanvas(128, 128), bctx2 = blurC.getContext('2d');
+const speckle = mkCanvas(256, 256);
+const HAS_FILTER = 'filter' in bctx2;
+(() => {
+  const x = speckle.getContext('2d');
+  for (let i = 0; i < 3000; i++) { x.fillStyle = `rgba(0,0,0,${rand(.15, .85)})`; x.beginPath(); x.arc(Math.random() * 256, Math.random() * 256, rand(.35, 1.1), 0, Math.PI * 2); x.fill(); }
+  x.strokeStyle = 'rgba(0,0,0,.14)'; x.lineWidth = .7;
+  for (let i = -256; i < 512; i += 3) { x.beginPath(); x.moveTo(i, 0); x.lineTo(i + 256, 256); x.stroke(); }
+})();
+
+function genPaperBase(style){
+  const st = PAPER_STYLES[style], rnd = mulberry32((Math.random() * 1e9) | 0);
+  const [r, g, b] = st.base;
+  bctx.globalCompositeOperation = 'source-over'; bctx.globalAlpha = 1;
+  bctx.fillStyle = `rgb(${r},${g},${b})`; bctx.fillRect(0, 0, PW, PH);
+  // mottling (cloudy formation of the sheet)
+  const sw = 170, shh = 220, sm = mkCanvas(sw, shh), sx = sm.getContext('2d'), sd = sx.createImageData(sw, shh), n = makeNoise2D((rnd() * 1e6) | 0);
+  for (let y = 0; y < shh; y++) for (let x = 0; x < sw; x++) { const v = 128 + ((n(x / 9, y / 9) * .6 + n(x / 3, y / 3) * .4) - .5) * 255 * st.mottle; const i = (y * sw + x) * 4; sd.data[i] = sd.data[i + 1] = sd.data[i + 2] = v; sd.data[i + 3] = 255; }
+  sx.putImageData(sd, 0, 0);
+  bctx.globalCompositeOperation = 'overlay'; bctx.globalAlpha = .55; bctx.imageSmoothingEnabled = true; bctx.drawImage(sm, 0, 0, PW, PH);
+  bctx.globalAlpha = 1; bctx.globalCompositeOperation = 'source-over';
+  // fibres
+  for (let i = 0; i < st.fibers; i++) {
+    const x0 = rnd() * PW, y0 = rnd() * PH, len = 6 + rnd() * 26, ang = rnd() * Math.PI * 2, dark = rnd() < .62;
+    bctx.strokeStyle = dark ? `rgba(${r * .55 | 0},${g * .52 | 0},${b * .5 | 0},${.05 + rnd() * .09})` : `rgba(255,255,255,${.08 + rnd() * .12})`;
+    bctx.lineWidth = .5 + rnd() * .9; bctx.beginPath(); bctx.moveTo(x0, y0);
+    bctx.quadraticCurveTo(x0 + Math.cos(ang + .6) * len * .5, y0 + Math.sin(ang + .6) * len * .5, x0 + Math.cos(ang) * len, y0 + Math.sin(ang) * len); bctx.stroke();
+  }
+  // laid and chain lines
+  if (st.laid) {
+    bctx.fillStyle = 'rgba(120,100,70,.035)'; for (let y = 0; y < PH; y += 8) bctx.fillRect(0, y, PW, 2);
+    bctx.fillStyle = 'rgba(120,100,70,.05)'; for (let x = 90; x < PW; x += 200) bctx.fillRect(x, 0, 3, PH);
+  }
+  // ageing: toned edges and foxing
+  if (st.aged) {
+    const edge = (x0, y0, x1, y1) => { const gr = bctx.createLinearGradient(x0, y0, x1, y1); gr.addColorStop(0, `rgba(150,105,45,${.22 * st.aged})`); gr.addColorStop(1, 'rgba(150,105,45,0)'); bctx.fillStyle = gr; bctx.fillRect(0, 0, PW, PH); };
+    edge(0, 0, 90, 0); edge(PW, 0, PW - 90, 0); edge(0, 0, 0, 90); edge(0, PH, 0, PH - 120);
+    for (let i = 0; i < 26 * st.aged; i++) { const x = rnd() * PW, y = rnd() * PH, rr = 3 + rnd() * 14; const gr = bctx.createRadialGradient(x, y, 0, x, y, rr); gr.addColorStop(0, `rgba(140,85,35,${.08 + rnd() * .14})`); gr.addColorStop(1, 'rgba(140,85,35,0)'); bctx.fillStyle = gr; bctx.fillRect(x - rr, y - rr, rr * 2, rr * 2); }
+  }
+  // fine grain
+  const id = bctx.getImageData(0, 0, PW, PH), d = id.data, gamt = st.grain;
+  for (let i = 0; i < d.length; i += 4) { const v = (Math.random() - .5) * gamt; d[i] += v; d[i + 1] += v; d[i + 2] += v * 1.05; }
+  bctx.putImageData(id, 0, 0);
+}
+function recomposite(x = 0, y = 0, w = PW, h = PH){
+  x = Math.max(0, Math.floor(x)); y = Math.max(0, Math.floor(y)); w = Math.min(PW - x, Math.ceil(w)); h = Math.min(PH - y, Math.ceil(h));
+  if (w <= 0 || h <= 0) return;
+  tctx.globalCompositeOperation = 'source-over'; tctx.drawImage(paperBase, x, y, w, h, x, y, w, h);
+  tctx.globalCompositeOperation = 'multiply'; tctx.drawImage(paperInk, x, y, w, h, x, y, w, h);
+  tctx.globalCompositeOperation = 'source-over';
+  paperTex.needsUpdate = true;
+}
+
+/* per-character slug personality: every machine has its own crooked letters */
+const SLUG = {};
+function slugOf(ch){
+  if (SLUG[ch]) return SLUG[ch];
+  const r = mulberry32([...ch].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) ^ 0x5bd1e995);
+  const clog = 'eaoB86@%g'.includes(ch) && r() < .7;
+  return SLUG[ch] = { dx: (r() - .5) * 1.4, dy: (r() - .5) * 2.0, rot: (r() - .5) * 1.6 * DEG, weight: .86 + r() * .18, clog, tiltV: (r() - .5) * .35 };
+}
+let fontPx = 33;
+function updateFontMetrics(){
+  const c = cell(), mc = gctx; mc.font = `100px ${FAM[S.face]}`;
+  const w = Math.max(mc.measureText('M').width, mc.measureText('W').width) / 100;
+  fontPx = Math.min(c / 0.6, (c * 0.98) / Math.max(w, 0.5));
+}
+function printGlyph(ch, col, baseY, opts = {}){
+  if (!S.paperIn && !opts.force) return false;
+  const c = cell(), cx = col * c + c / 2;
+  if (baseY < 8 || baseY > PH - 4 || cx < 2 || cx > PW - 2) return false;
+  const sl = slugOf(ch), ribbon = opts.ribbon || S.ribbon;
+  const ink = INK[ribbon];
+  S.ribbonUse++;
+  const wear = 0.9 + 0.1 * Math.sin(S.ribbonUse * 0.011) * Math.sin(S.ribbonUse * 0.0037 + 1.3);
+  let strength = (opts.strength ?? rand(.86, 1.02)) * sl.weight * wear;
+  if (Math.random() < .03) strength *= rand(.55, .75);
+  if (ribbon === 'stencil') strength = .28;
+  const G = 128, gb = G * 0.62;
+  gctx.setTransform(1, 0, 0, 1, 0, 0); gctx.globalCompositeOperation = 'source-over'; gctx.globalAlpha = 1; gctx.clearRect(0, 0, G, G);
+  gctx.translate(G / 2 + sl.dx + rand(-.25, .25), gb + sl.dy + rand(-.3, .3)); gctx.rotate(sl.rot + rand(-.15, .15) * DEG);
+  gctx.font = `${fontPx}px ${FAM[S.face]}`; gctx.textAlign = 'center'; gctx.textBaseline = 'alphabetic';
+  gctx.fillStyle = `rgb(${ink[0]},${ink[1]},${ink[2]})`; gctx.fillText(ch, 0, 0);
+  if (sl.clog && ribbon !== 'stencil') { gctx.strokeStyle = gctx.fillStyle; gctx.lineWidth = .9; gctx.strokeText(ch, 0, 0); }
+  gctx.setTransform(1, 0, 0, 1, 0, 0);
+  // uneven platen contact: one edge of the slug lands harder
+  gctx.globalCompositeOperation = 'destination-in';
+  const top = clamp(1 - Math.max(0, sl.tiltV) + rand(-.08, .04), .55, 1), bot = clamp(1 + Math.min(0, sl.tiltV) + rand(-.08, .04), .55, 1);
+  const gr = gctx.createLinearGradient(0, gb - fontPx * .8, 0, gb + fontPx * .25);
+  gr.addColorStop(0, `rgba(0,0,0,${top})`); gr.addColorStop(1, `rgba(0,0,0,${bot})`);
+  gctx.fillStyle = gr; gctx.fillRect(0, 0, G, G);
+  // ribbon fabric: ink misses in a speckled weave
+  gctx.globalCompositeOperation = 'destination-out'; gctx.globalAlpha = ribbon === 'stencil' ? .3 : clamp(.42 + (1 - wear) * 2 + rand(-.08, .1), .2, .7);
+  gctx.drawImage(speckle, -Math.random() * 128, -Math.random() * 128);
+  gctx.globalAlpha = 1; gctx.globalCompositeOperation = 'source-over';
+  const dx = cx - G / 2, dy = baseY - gb;
+  // ink spread: soften on the small glyph canvas, never on the full page
+  let src = glyphC;
+  if (HAS_FILTER) {
+    bctx2.setTransform(1, 0, 0, 1, 0, 0); bctx2.globalCompositeOperation = 'source-over'; bctx2.clearRect(0, 0, G, G);
+    if (ribbon !== 'stencil') { bctx2.filter = 'blur(1.3px)'; bctx2.globalAlpha = .1; bctx2.drawImage(glyphC, 0, 0); }
+    bctx2.filter = 'blur(0.4px)'; bctx2.globalAlpha = 1; bctx2.drawImage(glyphC, 0, 0);
+    bctx2.filter = 'none'; src = blurC;
+  }
+  ictx.globalCompositeOperation = 'multiply';
+  ictx.globalAlpha = clamp(strength, 0, 1); ictx.drawImage(src, dx, dy);
+  ictx.globalAlpha = 1; ictx.globalCompositeOperation = 'source-over';
+  if (!opts.noComposite) recomposite(dx - 2, dy - 2, G + 4, G + 4);
+  inkDirty = true;
+  return true;
+}
+
+/* ============================== paper mesh ============================== */
+const PR = 260, PCOLS = 9;
+function buildPaper(){
+  paperGeo = new T.BufferGeometry();
+  const pos = new Float32Array(PR * PCOLS * 3), uv = new Float32Array(PR * PCOLS * 2), idx = [];
+  for (let i = 0; i < PR; i++) for (let j = 0; j < PCOLS; j++) { const v = i * PCOLS + j; uv[v * 2] = j / (PCOLS - 1); uv[v * 2 + 1] = 1 - i / (PR - 1); }
+  for (let i = 0; i < PR - 1; i++) for (let j = 0; j < PCOLS - 1; j++) { const a = i * PCOLS + j, b = a + PCOLS, c = a + 1, d = b + 1; idx.push(a, b, c, c, b, d); }
+  paperGeo.setAttribute('position', new T.BufferAttribute(pos, 3)); paperGeo.setAttribute('uv', new T.BufferAttribute(uv, 2)); paperGeo.setIndex(idx);
+  paperMesh = sh(new T.Mesh(paperGeo, new T.MeshStandardMaterial({ map: paperTex, roughness: .86, metalness: 0, side: T.FrontSide })));
+  paperBack = sh(new T.Mesh(paperGeo, new T.MeshStandardMaterial({ color: 0xd8d5cc, roughness: .9, side: T.BackSide })));
+  paperMesh.userData = { type: 'paper' }; paperBack.userData = { type: 'paper' };
+  pickables.push(paperMesh, paperBack);
+  carriage.add(paperMesh, paperBack);
+}
+function applyPaperMaterial(){
+  const st = PAPER_STYLES[S.paperStyle];
+  paperBack.material.color.setHex(st.back);
+  for (const m of [paperMesh.material, paperBack.material]) { m.transparent = st.opacity < 1; m.opacity = st.opacity; m.needsUpdate = true; }
+}
+let lastPaperF = NaN;
+function updatePaperGeom(fcm){
+  if (Math.abs(fcm - lastPaperF) < 1e-4) return; lastPaperF = fcm;
+  const pos = paperGeo.attributes.position.array, ck = PAPER_STYLES[S.paperStyle].cockle;
+  for (let i = 0; i < PR; i++) {
+    const u = i / (PR - 1) * PAPER_H, s = fcm - u, p = pathAt(s);
+    const freeAmt = s > 2.2 ? Math.min(1, (s - 2.2) / 4) : (s < -6 ? Math.min(1, (-6 - s) / 4) : 0);
+    for (let j = 0; j < PCOLS; j++) {
+      const x = (j / (PCOLS - 1) - .5) * PAPER_W;
+      const w = ck * freeAmt * (Math.sin(x * .55 + u * .23) * .7 + Math.sin(x * 1.3 - u * .4) * .3) + 0.012 * freeAmt * Math.cos(x * .3);
+      const v = (i * PCOLS + j) * 3; pos[v] = x; pos[v + 1] = p.y + p.ny * w; pos[v + 2] = p.z + p.nz * w;
+    }
+  }
+  paperGeo.attributes.position.needsUpdate = true; paperGeo.computeVertexNormals(); paperGeo.computeBoundingSphere();
+}
+const feedCm = px => (px - fontPx * 0.32) * CM_PER_PX;
+
+/* bail scale with margin and tab markers */
+function drawBailScale(){
+  const c = bailScaleCanvas, x = c.getContext('2d'), W = c.width, H = c.height;
+  const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#e9e7e2'); g.addColorStop(.5, '#bdbab4'); g.addColorStop(1, '#d9d6cf');
+  x.fillStyle = g; x.fillRect(0, 0, W, H);
+  const cols = maxCol() + 1, cw = cell() / PW * W;
+  x.fillStyle = '#111';
+  for (let i = 0; i <= cols; i++) {
+    const px = (i * cell() + cell() / 2) / PW * W; const big = i % 10 === 0, mid = i % 5 === 0;
+    x.fillRect(px - .8, H - (big ? 26 : mid ? 18 : 11), 1.6, big ? 26 : mid ? 18 : 11);
+    if (big) { x.font = '700 22px "Courier Prime", monospace'; x.textAlign = 'center'; x.fillText(String(i), px, 24); }
+  }
+  for (const t of S.tabs) { const px = (t * cell() + cell() / 2) / PW * W; x.fillStyle = '#222'; x.fillRect(px - 5, 2, 10, 6); }
+  const mark = (col, dir) => { const px = (col * cell() + cell() / 2) / PW * W; x.fillStyle = '#b1261b'; x.beginPath(); x.moveTo(px, 30); x.lineTo(px + dir * 16, 30); x.lineTo(px, 48); x.closePath(); x.fill(); };
+  mark(S.leftM, 1); mark(S.rightM, -1);
+  bailScale.material.map.needsUpdate = true;
+}
+
+/* ============================== sound ============================== */
+const Snd = (() => {
+  let ac = null, master, wet, noiseBuf, vol = 0.8;
+  function init(){
+    if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+    ac = new AC();
+    const comp = ac.createDynamicsCompressor(); comp.threshold.value = -12; comp.knee.value = 10; comp.ratio.value = 4; comp.attack.value = .002; comp.release.value = .15;
+    master = ac.createGain(); master.gain.value = vol; master.connect(comp); comp.connect(ac.destination);
+    const conv = ac.createConvolver(); const len = ac.sampleRate * .6 | 0, ir = ac.createBuffer(2, len, ac.sampleRate);
+    for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 5) * (i < 140 ? 0 : 1); }
+    conv.buffer = ir; wet = ac.createGain(); wet.gain.value = .2; wet.connect(conv); conv.connect(master);
+    noiseBuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate); const nd = noiseBuf.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  }
+  const ok = () => ac && ac.state !== 'closed';
+  function bus(pan = 0){ const g = ac.createGain(); if (ac.createStereoPanner) { const p = ac.createStereoPanner(); p.pan.value = clamp(pan, -1, 1); g.connect(p); p.connect(master); p.connect(wet); } else { g.connect(master); g.connect(wet); } return g; }
+  function env(g, t, a, peak, dur){ g.gain.setValueAtTime(1e-5, t); g.gain.exponentialRampToValueAtTime(Math.max(peak, 2e-5), t + a); g.gain.exponentialRampToValueAtTime(1e-5, t + a + dur); }
+  function nz(t, o){
+    const s = ac.createBufferSource(); s.buffer = noiseBuf; s.playbackRate.value = o.rate || 1;
+    const f = ac.createBiquadFilter(); f.type = o.type || 'bandpass'; f.frequency.value = o.f; f.Q.value = o.q ?? 1;
+    const g = ac.createGain(); env(g, t, o.a || .0015, o.g, o.dur);
+    s.connect(f); f.connect(g); g.connect(o.out); s.start(t, Math.random() * 1.6); s.stop(t + (o.a || .0015) + o.dur + .03);
+  }
+  function tn(t, o){
+    const s = ac.createOscillator(); s.type = o.type || 'sine'; s.frequency.setValueAtTime(o.f, t); if (o.f2) s.frequency.exponentialRampToValueAtTime(o.f2, t + o.dur);
+    const g = ac.createGain(); env(g, t, o.a || .001, o.g, o.dur); s.connect(g); g.connect(o.out); s.start(t); s.stop(t + o.dur + .05);
+  }
+  function modal(t, o){
+    const s = ac.createBufferSource(); s.buffer = noiseBuf; const g0 = ac.createGain();
+    g0.gain.setValueAtTime(o.g, t); g0.gain.exponentialRampToValueAtTime(1e-4, t + (o.burst || .004)); s.connect(g0);
+    for (const [fr, q, gn] of o.modes) { const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = fr; bp.Q.value = q; const gg = ac.createGain(); gg.gain.value = gn; g0.connect(bp); bp.connect(gg); gg.connect(o.out); }
+    s.start(t, Math.random() * 1.6); s.stop(t + .3);
+  }
+  const at = d => ac.currentTime + (d || 0);
+  const ratchet = (t, out, g = 1) => { nz(t, { type: 'highpass', f: 3200, q: .7, dur: .005, g: .2 * g, out }); modal(t, { g: 2.2 * g, out, modes: [[2300, 18, 1], [3650, 22, .5]] }); };
+  return {
+    init, ready: () => !!ac,
+    setVol(v){ vol = v; if (master) master.gain.value = v; },
+    keyDown(pan, k = 1){ if (!ok()) return; const t = at(), o = bus(pan); nz(t, { f: 2000 * k, q: 2.2, dur: .018, g: .14, out: o }); tn(t, { f: 320 * k, f2: 170, dur: .025, g: .06, out: o }); },
+    strike(pan, k = 1, delay = .055, paper = true, hard = 1){
+      if (!ok()) return; const t = at(delay), o = bus(pan);
+      if (paper) {
+        nz(t, { type: 'highpass', f: 2400, q: .7, dur: .011, g: .5 * hard, out: o });
+        modal(t, { g: 5.5 * hard, out: o, modes: [[1480 * k, 16, 1], [2380 * k, 20, .9], [3650 * k, 22, .7], [5300 * k, 25, .45]] });
+        tn(t, { f: 150, f2: 55, dur: .075, g: .5 * hard, out: o }); nz(t, { f: 420, q: 1.3, dur: .05, g: .26 * hard, out: o });
+      } else {
+        tn(t, { f: 125, f2: 55, dur: .08, g: .55, out: o }); nz(t, { f: 380, q: 1, dur: .06, g: .35, out: o }); modal(t, { g: 2.5, out: o, modes: [[1100 * k, 12, 1], [1900 * k, 14, .6]] });
+      }
+      nz(t + .014, { f: 6400, q: 3, dur: .005, g: .15, out: o }); nz(t + .026, { f: 5200, q: 4, dur: .004, g: .09, out: o });
+      nz(t + .115, { f: 1150, q: 2.5, dur: .022, g: .07, out: o });
+    },
+    space(){ if (!ok()) return; const t = at(), o = bus(0); nz(t, { f: 620, q: 1, dur: .05, g: .3, out: o }); tn(t, { f: 115, f2: 65, dur: .07, g: .3, out: o }); nz(t + .03, { f: 6000, q: 3, dur: .005, g: .15, out: o }); nz(t + .042, { f: 5000, q: 3, dur: .004, g: .08, out: o }); nz(t + .1, { f: 900, q: 2, dur: .02, g: .06, out: o }); },
+    back(pan){ if (!ok()) return; const t = at(), o = bus(pan); nz(t, { f: 1500, q: 2, dur: .02, g: .18, out: o }); modal(t + .02, { g: 2.6, out: o, modes: [[2900, 18, 1], [4300, 20, .6]] }); tn(t + .02, { f: 120, f2: 70, dur: .05, g: .22, out: o }); nz(t + .05, { f: 6000, q: 3, dur: .005, g: .12, out: o }); },
+    shift(down, pan){ if (!ok()) return; const t = at(), o = bus(pan);
+      if (down) { nz(t, { f: 330, q: 1.1, dur: .08, g: .4, out: o }); tn(t, { f: 92, f2: 58, dur: .1, g: .48, out: o }); modal(t + .01, { g: 2.6, out: o, modes: [[1900, 14, 1], [3100, 18, .6]] }); }
+      else { nz(t, { f: 420, q: 1.1, dur: .06, g: .25, out: o }); tn(t, { f: 105, f2: 70, dur: .07, g: .3, out: o }); modal(t, { g: 1.6, out: o, modes: [[2100, 14, 1]] }); } },
+    bell(delay = 0){ if (!ok()) return; const t = at(delay), o = bus(-.35); nz(t, { f: 4500, q: 2, dur: .006, g: .15, out: o });
+      [[2637, 1.7, .2], [2637 * 2.405, .9, .08], [2637 * 4.12, .5, .045], [2637 * 5.92, .28, .03], [2637 * 1.003, 1.5, .1]].forEach(([f, d, g]) => tn(t, { f, dur: d, g, out: o })); },
+    carriageReturn(dur, notches){ if (!ok()) return; const t = at(), o = bus(-.45);
+      nz(t, { f: 1800, q: 2, dur: .02, g: .18, out: o });
+      for (let i = 0; i < notches; i++) ratchet(t + .015 + i * .024, o);
+      const s = ac.createBufferSource(); s.buffer = noiseBuf; const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1300; f.Q.value = .8; const g = ac.createGain();
+      const t0 = t + .04; g.gain.setValueAtTime(1e-5, t0); g.gain.exponentialRampToValueAtTime(.07, t0 + .03); g.gain.setValueAtTime(.06, t0 + Math.max(.04, dur - .03)); g.gain.exponentialRampToValueAtTime(1e-5, t0 + dur);
+      s.connect(f); f.connect(g); g.connect(o); s.start(t0, Math.random()); s.stop(t0 + dur + .05);
+      const ticks = Math.min(60, Math.floor(dur * 120)); for (let i = 0; i < ticks; i++) nz(t0 + i / ticks * dur, { f: 4000 + Math.random() * 900, q: 5, dur: .004, g: .05 * (1 - i / ticks * .5), out: o });
+      const te = t0 + dur; tn(te, { f: 125, f2: 42, dur: .14, g: .85, out: o }); nz(te, { f: 650, q: 1, dur: .09, g: .5, out: o });
+      modal(te, { g: 3.2, out: o, modes: [[880, 10, 1], [1720, 14, .7], [2650, 16, .4]] }); nz(te, { type: 'highpass', f: 3000, q: .7, dur: .012, g: .28, out: o }); },
+    tabRun(dur){ if (!ok()) return; const t = at(), o = bus(.1); nz(t, { f: 2200, q: 2, dur: .02, g: .15, out: o });
+      const ticks = Math.min(40, Math.floor(dur * 110)); for (let i = 0; i < ticks; i++) nz(t + .02 + i / ticks * dur, { f: 4300 + Math.random() * 800, q: 5, dur: .004, g: .06, out: o });
+      tn(t + .02 + dur, { f: 140, f2: 55, dur: .09, g: .55, out: o }); modal(t + .02 + dur, { g: 2.6, out: o, modes: [[1200, 12, 1], [2400, 16, .5]] }); },
+    notch(fine){ if (!ok()) return; const o = bus(-.6); if (fine) nz(at(), { f: 1600, q: 1, dur: .02, g: .05, out: o }); else ratchet(at(), o, .9); },
+    locked(pan){ if (!ok()) return; const t = at(), o = bus(pan); nz(t, { type: 'lowpass', f: 520, q: .7, dur: .05, g: .32, out: o }); tn(t, { f: 95, f2: 70, dur: .05, g: .25, out: o }); },
+    jam(){ if (!ok()) return; const t = at(.03), o = bus(0); const m = [[3100, 25, 1], [4700, 30, .8], [6200, 30, .6], [2200, 20, .6]];
+      modal(t, { g: 6, out: o, modes: m }); modal(t + .018, { g: 5, out: o, modes: m.map(([f, q, g]) => [f * 1.07, q, g]) }); tn(t, { f: 160, f2: 60, dur: .08, g: .4, out: o }); tn(t, { f: 4180, dur: .35, g: .02, out: o }); },
+    unjam(){ if (!ok()) return; const o = bus(0); for (let i = 0; i < 3; i++) { const t = at(i * .05 + Math.random() * .02); nz(t, { f: 1100 + i * 300, q: 2.5, dur: .03, g: .12, out: o }); modal(t, { g: 2, out: o, modes: [[2600 + i * 400, 18, 1]] }); } },
+    click(pan = 0){ if (!ok()) return; const t = at(), o = bus(pan); nz(t, { f: 3000, q: 2, dur: .008, g: .14, out: o }); modal(t, { g: 1.8, out: o, modes: [[2700, 18, 1]] }); },
+    lever(){ if (!ok()) return; const t = at(), o = bus(.5); nz(t, { f: 900, q: 1.5, dur: .03, g: .2, out: o }); modal(t, { g: 2.2, out: o, modes: [[1500, 14, 1], [2700, 18, .5]] }); },
+    paper(remove){ if (!ok()) return; const t = at(), o = bus(0), dur = remove ? .45 : .7;
+      const s = ac.createBufferSource(); s.buffer = noiseBuf; const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 3600; f.Q.value = .5; const g = ac.createGain();
+      const curve = new Float32Array(64); for (let i = 0; i < 64; i++) curve[i] = (.04 + Math.random() * .1) * Math.sin(Math.PI * i / 63);
+      g.gain.value = 0; g.gain.setValueCurveAtTime(curve, t, dur); s.connect(f); f.connect(g); g.connect(o); s.start(t, Math.random()); s.stop(t + dur + .05);
+      const n = remove ? 14 : 10; for (let i = 0; i < n; i++) ratchet(t + .05 + i * (dur / n), o, .7); }
+  };
+})();
+
+/* ============================== UI helpers ============================== */
+let toastT = 0;
+function toast(msg){ const el = $('#toast'); el.textContent = msg; el.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('show'), 2400); }
+function refreshReadout(){ /* no on-screen readout */ }
+function setSeg(name, v){ document.querySelectorAll(`.seg[data-set="${name}"] button`).forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === String(v)))); }
+
+/* ============================== typing mechanics ============================== */
+const UP_MS = 55, DOWN_MS = 125, JAM_MS = 32;
+const keyPan = key => clamp((key.x || 0) / 14, -1, 1) * .5;
+const shiftOn = () => S.shift || S.lock;
+function limitCol(){ return S.marRel ? maxCol() + 1 : S.rightM; }
+
+function pressKeyVisual(key, ms = 110){ key.downUntil = performance.now() + ms; }
+const mustWait = (fromQ, colAction) => S.returning || (!fromQ && S.queue.length > 0) || (colAction && S.pending > 0);
+function typeChar(ch, src = 'kbd'){
+  Snd.init();
+  if (mustWait(src === 'queue', false)) { S.queue.push(() => typeChar(ch, 'queue')); return; }
+  const map = CHARMAP[ch]; if (!map) return;
+  const key = map.key, bar = key.bar, now = performance.now();
+  if (S.jammed) { pressKeyVisual(key, 50); Snd.locked(keyPan(key)); toast('Typebars are jammed. Press Esc or click the tangle to free them.'); return; }
+  if (S.col + S.pending >= limitCol()) {
+    pressKeyVisual(key, 40); Snd.locked(keyPan(key));
+    toast(S.marRel ? 'End of the carriage travel' : 'Margin stop reached. Throw the return lever, or use Margin release.'); return;
+  }
+  if (bar.phase !== 'idle' && bar.phase !== 'down') { Snd.locked(keyPan(key)); return; }
+  if (map.shifted && !shiftOn()) { S.autoShiftUntil = now + 150; keyBy('shift').forEach(k => pressKeyVisual(k, 150)); }
+  const prev = S.lastStrike;
+  if (S.jamOn && src === 'kbd' && prev && prev.bar !== bar && prev.bar.phase === 'up' && now - prev.t < JAM_MS) { doJam(prev.bar, bar); return; }
+  S.lastStrike = { bar, t: now };
+  pressKeyVisual(key, UP_MS + 60);
+  bar.phase = 'up'; bar.t0 = now; bar.ch = map.shifted ? key.hi : key.lo; bar.printed = false; S.pending++;
+  const k = 0.94 + ((key.x + 14) / 28) * 0.12;
+  Snd.keyDown(keyPan(key), k);
+  const onPaper = S.paperIn && S.feedPx > 6 && S.feedPx < PH - 4;
+  Snd.strike(keyPan(key) * .6, k + rand(-.02, .02), UP_MS / 1000, onPaper, rand(.9, 1.05));
+  const ribbonLift = S.ribbon === 'black' ? 1.24 : S.ribbon === 'red' ? 0.6 : 0;
+  bar.ribbonLift = ribbonLift;
+}
+function impact(bar){
+  bar.printed = true; S.pending = Math.max(0, S.pending - 1);
+  printGlyph(bar.ch, S.col, S.feedPx);
+  advance(1, true);
+  spools.forEach((s, i) => s.rotation.y += (i ? -1 : 1) * 0.03);
+}
+function advance(n, ring){
+  const before = S.col; S.col = clamp(S.col + n, 0, maxCol() + 1);
+  const bellCol = S.rightM - 6;
+  if (ring && before < bellCol && S.col >= bellCol) Snd.bell(0.02);
+  refreshReadout();
+}
+function doJam(a, b){
+  S.jammed = true; S.lastStrike = null;
+  for (const [bar, ang] of [[a, .2], [b, .34]]) {
+    if (bar.phase === 'up') S.pending = Math.max(0, S.pending - 1);
+    bar.phase = 'jam'; bar.jamAt = ang; bar.jamFrom = bar.angle; bar.t0 = performance.now();
+  }
+  pressKeyVisual(b.key, 80); Snd.keyDown(keyPan(b.key)); Snd.jam();
+  toast('Typebars jammed. Press Esc or click the tangle to free them.');
+}
+function clearJam(){
+  if (!S.jammed) return;
+  S.jammed = false; for (const b of bars) if (b.phase === 'jam') { b.phase = 'down'; b.t1 = performance.now(); b.fromAngle = b.angle; }
+  Snd.unjam();
+}
+function space(q){
+  Snd.init();
+  if (mustWait(q === true, true)) { S.queue.push(() => space(true)); return; }
+  const k = keyBy('space')[0]; pressKeyVisual(k, 90);
+  if (S.col + S.pending >= limitCol()) { Snd.locked(0); return; }
+  Snd.space(); advance(1, true);
+}
+function backspace(q){
+  Snd.init();
+  if (mustWait(q === true, true)) { S.queue.push(() => backspace(true)); return; }
+  const k = keyBy('back')[0]; pressKeyVisual(k, 100);
+  const min = (S.marRel || S.col < S.leftM) ? 0 : S.leftM;
+  if (S.col <= min) { Snd.locked(keyPan(k)); return; }
+  Snd.back(keyPan(k)); advance(-1, false);
+}
+function nudge(n){ Snd.init(); const c = clamp(S.col + n, 0, maxCol() + 1); if (c !== S.col) { S.col = c; Snd.notch(true); refreshReadout(); } }
+function carriageReturn(feedLines = true, q){
+  Snd.init();
+  if (mustWait(q === true, true)) { if (!S.queue.some(f => f.isReturn)) { const f = () => carriageReturn(feedLines, true); f.isReturn = true; S.queue.push(f); } return; }
+  const from = S.carX, to = -paperLocalX(S.leftM);
+  const dist = Math.abs(to - from), dur = 0.1 + dist * 0.014;
+  S.returning = true; S.carOverride = true; S.marRel = false;
+  const notches = Math.round(S.spacing * 2);
+  Snd.carriageReturn(dur, feedLines ? notches : 0);
+  const t0 = performance.now();
+  if (feedLines) { S.feedPx += LINE_PX * S.spacing; checkPaperEnd(); }
+  S.col = S.leftM; refreshReadout();
+  tween(dur * 1000 + 40, p => {
+    const q = p < .08 ? 0 : (p - .08) / .92;
+    const e = 1 - Math.pow(1 - q, 2.2);
+    S.carX = lerp(from, to, e);
+    returnLever.rotation.y = Math.sin(Math.min(1, p * 1.6) * Math.PI) * 0.32;
+  }, () => {
+    S.carX = to; S.returning = false; S.carOverride = false; returnLever.rotation.y = 0;
+    tween(140, p => { S.carX = to + Math.sin(p * Math.PI) * 0.06 * (1 - p); });
+    flushQueue();
+  });
+}
+function flushQueue(){ /* the frame loop drains the queue one action at a time */ }
+function drainQueue(){ let guard = 0; while (S.queue.length && !S.returning && S.pending === 0 && guard++ < 8) S.queue.shift()(); }
+function tab(q){
+  Snd.init();
+  if (mustWait(q === true, true)) { S.queue.push(() => tab(true)); return; }
+  const k = keyBy('tab')[0]; pressKeyVisual(k, 120);
+  const stops = [...S.tabs].filter(t => t > S.col).sort((a, b) => a - b);
+  let target = stops.length ? stops[0] : limitCol();
+  target = Math.min(target, limitCol());
+  if (target <= S.col) { Snd.locked(keyPan(k)); return; }
+  const from = S.carX, to = -paperLocalX(target), dur = .05 + Math.abs(to - from) * .009;
+  S.returning = true; S.carOverride = true; S.col = target; refreshReadout(); Snd.tabRun(dur);
+  tween(dur * 1000 + 20, p => { S.carX = lerp(from, to, p * p); }, () => { S.carX = to; S.returning = false; S.carOverride = false; flushQueue(); });
+}
+function setTab(set){
+  Snd.init(); Snd.click(.4);
+  const k = keyBy(set ? 'tabset' : 'tabclr')[0]; if (k) pressKeyVisual(k, 110);
+  if (set) S.tabs.add(S.col); else S.tabs.delete(S.col);
+  toast(set ? `Tab stop set at column ${S.col}` : (`Tab stop cleared at column ${S.col}`));
+  drawBailScale(); refreshReadout();
+}
+function setShift(on){ if (S.shift === on) return; S.shift = on; keyBy('shift').forEach(k => k.held = on); Snd.init(); Snd.shift(on, -.3); }
+function setLock(on){ if (S.lock === on) return; S.lock = on; const k = keyBy('lock')[0]; if (k) k.held = on; Snd.init(); Snd.shift(on, -.4); }
+function toggleMarRel(){ S.marRel = !S.marRel; const k = keyBy('marrel')[0]; pressKeyVisual(k, 110); Snd.init(); Snd.click(-.4); refreshReadout(); toast(S.marRel ? 'Margin release: the carriage may pass the stops until the next return' : 'Margin stops engaged'); }
+function roll(dir, fine){
+  if (!S.paperIn || S.paperAnim) { Snd.init(); Snd.notch(fine); return; }
+  Snd.init(); S.feedPx = clamp(S.feedPx + dir * (fine ? 3 : LINE_PX), -60, PH + 80); Snd.notch(fine); refreshReadout(); checkPaperEnd();
+}
+function checkPaperEnd(){
+  if (!S.paperIn) return;
+  if (S.feedPx > PH + 60) { removeSheet(true); return; }
+  if (S.feedPx > PH - DPI * 0.6) toast('Nearly at the foot of the page');
+}
+function setRibbon(r){ S.ribbon = r; setSeg('ribbon', r); refreshReadout(); Snd.init(); Snd.lever(); }
+function cycleRibbon(){ const order = ['black', 'red', 'stencil']; setRibbon(order[(order.indexOf(S.ribbon) + 1) % 3]); }
+function setSpacing(v){ S.spacing = v; setSeg('spacing', v); Snd.init(); Snd.lever(); toast(`Line space ${v === 1 ? 'single' : v === 2 ? 'double' : '1½'}`); }
+function cycleSpacing(){ const o = [1, 1.5, 2]; setSpacing(o[(o.indexOf(S.spacing) + 1) % 3]); }
+function setPitch(cpi){
+  if (cpi === S.cpi) return;
+  const toCol = (c, o, n) => Math.round((c * (DPI / o) + DPI / o / 2) / (DPI / n) - .5);
+  const old = S.cpi;
+  S.col = toCol(S.col, old, cpi); S.leftM = toCol(S.leftM, old, cpi); S.rightM = toCol(S.rightM, old, cpi);
+  S.tabs = new Set([...S.tabs].map(t => toCol(t, old, cpi)));
+  S.cpi = cpi; updateFontMetrics(); setSeg('cpi', cpi);
+  drawBailScale(); refreshReadout();
+  toast(cpi === 10 ? 'Pica: 10 characters to the inch' : 'Elite: 12 characters to the inch');
+}
+
+/* sheet handling */
+function insertSheet(){
+  if (S.paperAnim) return;
+  Snd.init();
+  const go = () => {
+    S.paperIn = true; genPaperBase(S.paperStyle); ictx.clearRect(0, 0, PW, PH); inkDirty = false; recomposite();
+    buildPath(S.paperStyle); applyPaperMaterial(); lastPaperF = NaN;
+    paperMesh.visible = paperBack.visible = true;
+    S.paperAnim = true; const target = DPI + LINE_PX * 0.75; S.firstLine = target;
+    const start = -DPI * 1.6; S.feedVis = start; S.feedPx = target;
+    Snd.paper(false);
+    tween(900, p => { const e = 1 - Math.pow(1 - p, 3); S.feedVis = lerp(start, target, e); }, () => { S.paperAnim = false; S.feedVis = target; refreshReadout(); });
+    S.col = S.leftM; refreshReadout();
+  };
+  if (S.paperIn) removeSheet(false, go); else go();
+}
+function removeSheet(auto, then){
+  if (!S.paperIn || S.paperAnim) { then && then(); return; }
+  S.paperAnim = true; const from = S.feedVis, to = PH + DPI * 7;
+  Snd.paper(true);
+  tween(auto ? 700 : 620, p => { S.feedVis = lerp(from, to, p * p); }, () => {
+    S.paperAnim = false; S.paperIn = false; paperMesh.visible = paperBack.visible = false; S.feedPx = to; refreshReadout();
+    if (auto) toast('The sheet has run out of the machine. Press New paper to keep typing.');
+    then && then();
+  });
+}
+
+/* ============================== photos ============================== */
+// In the claude.ai viewer, saves go through the viewer's download prompt; a standalone file uses a normal download.
+const downloadsNS = (window.claude && typeof window.claude.use === 'function') ? window.claude.use('downloads').catch(() => null) : Promise.resolve(null);
+// Every save opens a preview first; nothing is downloaded until the Download button is pressed.
+let preview = null, previewToken = 0; // preview: { blob, url, filename }
+function offerImage(canvasEl, filename){
+  const token = ++previewToken, img = $('#modalImg'), note = $('#modalNote'), btn = $('#modalDownload');
+  if (preview) { URL.revokeObjectURL(preview.url); preview = null; }
+  img.hidden = true; img.removeAttribute('src');
+  note.textContent = 'Preparing the preview…';
+  btn.disabled = true;
+  $('#modal').hidden = false; $('#modalClose').focus();
+  canvasEl.toBlob(blob => {
+    if (token !== previewToken || $('#modal').hidden) return; // closed or replaced while encoding
+    if (!blob) { note.textContent = 'Could not create the image.'; return; }
+    preview = { blob, url: URL.createObjectURL(blob), filename };
+    img.src = preview.url; img.hidden = false;
+    note.textContent = 'This is how your page will look. Download it as a PNG image.';
+    btn.disabled = false; btn.focus();
+  }, 'image/png');
+}
+async function downloadPreview(){
+  if (!preview) return;
+  const { blob, url, filename } = preview, note = $('#modalNote'), btn = $('#modalDownload');
+  const dl = await downloadsNS;
+  if (dl) {
+    btn.disabled = true;
+    try { await dl.save({ filename, data: blob }); note.textContent = 'Saved.'; toast('Image saved'); }
+    catch (err) {
+      if (err && err.code === 'declined') note.textContent = 'Save cancelled.';
+      else if (err && err.code === 'rate_limited') note.textContent = 'A save is already waiting for your answer.';
+      else note.textContent = 'Saving is not available in this view. Right-click the image (or press and hold on a phone) and choose Save Image.';
+    }
+    btn.disabled = false;
+    return;
+  }
+  try { const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); } catch (e) {}
+  note.textContent = 'The download has started. If nothing arrived, right-click the image (or press and hold on a phone) and choose Save Image.';
+}
+function sheetComposite(){ const c = mkCanvas(PW, PH), x = c.getContext('2d'); x.drawImage(paperBase, 0, 0); x.globalCompositeOperation = 'multiply'; x.drawImage(paperInk, 0, 0); return c; }
+function saveScan(){ if (!S.paperIn && !hasInk()) { toast('There is no sheet in the machine. Press New paper to insert one.'); return; } offerImage(sheetComposite(), `typed-page-scan-${stamp()}.png`); }
+function savePhoto(){
+  if (!S.paperIn && !hasInk()) { toast('There is no sheet in the machine'); return; }
+  const W = 2000, H = 2500, c = mkCanvas(W, H), x = c.getContext('2d');
+  x.drawImage(wood, 0, 0, 1024, 1024, 0, 0, W, W * 1.25);
+  x.fillStyle = 'rgba(8,5,3,.5)'; x.fillRect(0, 0, W, H);
+  const pool = x.createRadialGradient(W * .38, H * .3, 100, W * .45, H * .45, W * .95); pool.addColorStop(0, 'rgba(255,200,140,.18)'); pool.addColorStop(1, 'rgba(0,0,0,.45)');
+  x.fillStyle = pool; x.fillRect(0, 0, W, H);
+  const sheet = sheetComposite(), sc = (H * .9) / PH, sw = PW * sc, shh = PH * sc;
+  x.save(); x.translate(W / 2 + 10, H / 2); x.rotate(-1.1 * DEG);
+  x.shadowColor = 'rgba(0,0,0,.65)'; x.shadowBlur = 70; x.shadowOffsetX = 18; x.shadowOffsetY = 30;
+  x.fillStyle = '#ddd'; x.fillRect(-sw / 2, -shh / 2, sw, shh); x.shadowColor = 'transparent';
+  x.drawImage(sheet, -sw / 2, -shh / 2, sw, shh);
+  x.globalCompositeOperation = 'multiply';
+  const lg = x.createLinearGradient(-sw / 2, -shh / 2, sw / 2, shh / 2); lg.addColorStop(0, '#fff7ea'); lg.addColorStop(.55, '#f1e8da'); lg.addColorStop(1, '#bfb4a2');
+  x.fillStyle = lg; x.fillRect(-sw / 2, -shh / 2, sw, shh);
+  // gentle curl from the platen near the foot of the sheet
+  const curl = x.createLinearGradient(0, shh / 2 - 160, 0, shh / 2); curl.addColorStop(0, 'rgba(255,255,255,1)'); curl.addColorStop(1, 'rgba(205,196,182,1)');
+  x.fillStyle = curl; x.fillRect(-sw / 2, shh / 2 - 160, sw, 160);
+  x.globalCompositeOperation = 'screen';
+  const hl = x.createRadialGradient(-sw * .2, -shh * .25, 20, -sw * .2, -shh * .25, sw * .9); hl.addColorStop(0, 'rgba(255,240,215,.14)'); hl.addColorStop(1, 'rgba(255,240,215,0)');
+  x.fillStyle = hl; x.fillRect(-sw / 2, -shh / 2, sw, shh);
+  x.restore();
+  offerImage(c, `typed-page-photo-${stamp()}.png`);
+}
+function save3D(){ renderer.render(scene, camera); offerImage(renderer.domElement, `typewriter-${stamp()}.png`); }
+let inkDirty = false; const hasInk = () => inkDirty;
+const stamp = () => { const d = new Date(); return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`; };
+
+/* ============================== tweens & animation ============================== */
+const tweens = [];
+function tween(ms, update, done){ tweens.push({ t0: performance.now(), ms, update, done }); }
+function stepTweens(now){
+  for (let i = tweens.length - 1; i >= 0; i--) { const tw_ = tweens[i]; const p = clamp((now - tw_.t0) / tw_.ms, 0, 1); tw_.update(p); if (p >= 1) { tweens.splice(i, 1); tw_.done && tw_.done(); } }
+}
+function stepBars(now){
+  let lift = 0;
+  const landed = bars.filter(b => b.phase === 'up' && now - b.t0 >= UP_MS).sort((x, y) => x.t0 - y.t0);
+  for (const b of landed) { impact(b); b.phase = 'down'; b.t1 = now; b.fromAngle = 0; }
+  for (const b of bars) {
+    let a = b.rest;
+    if (b.phase === 'up') {
+      const p = (now - b.t0) / UP_MS;
+      a = b.rest * (1 - p * p);
+      lift = Math.max(lift, smooth(.35, .85, p) * b.ribbonLift);
+    } else if (b.phase === 'down') {
+      const q = (now - b.t1) / DOWN_MS, from = b.fromAngle ?? 0;
+      if (q >= 1) { a = b.rest; b.phase = 'idle'; }
+      else { const e = 1 - Math.pow(1 - q, 3); a = lerp(from, b.rest, e) + Math.sin(q * Math.PI) * 0.05 * (1 - q); if (from === 0) lift = Math.max(lift, (1 - smooth(0, .45, q)) * b.ribbonLift); }
+    } else if (b.phase === 'jam') {
+      const p = clamp((now - b.t0) / 70, 0, 1); a = lerp(b.jamFrom ?? b.rest, b.jamAt, p * (2 - p));
+    }
+    b.angle = a; b.swing.rotation.x = a;
+  }
+  RIB.liftTarget = lift; updateRibbon(false);
+}
+function stepKeys(dt, now){
+  for (const k of keys) {
+    const target = (k.held || now < k.downUntil) ? 1 : 0;
+    const rate = target > k.press ? 55 : 20;
+    k.press += (target - k.press) * Math.min(1, dt * rate);
+    const depth = k.sp === 'space' ? 0.42 : 0.55;
+    k.cap.position.y = (k.sp === 'space' ? 0 : 0) - k.press * depth;
+  }
+}
+function stepCarriage(dt, now){
+  const targetX = -paperLocalX(Math.min(S.col, maxCol() + 1));
+  if (!S.carOverride) S.carX += (targetX - S.carX) * Math.min(1, dt * 38);
+  const sh_ = (shiftOn() || now < S.autoShiftUntil) ? 1 : 0;
+  S.shiftVis += (sh_ - S.shiftVis) * Math.min(1, dt * 30);
+  carriage.position.set(S.carX, S.shiftVis * 0.4, 0);
+  if (!S.paperAnim) S.feedVis += (S.feedPx - S.feedVis) * Math.min(1, dt * 22);
+  const f = feedCm(S.feedVis);
+  if (S.paperIn) updatePaperGeom(f);
+  platenRot.rotation.x = -f / PLATEN.r;
+  lineLever.rotation.z = (S.spacing - 1.5) * 0.5;
+  releaseLever.rotation.x = S.paperAnim ? -0.4 : 0;
+  ribbonLever.rotation.y += (RIBBON_ANGLE[S.ribbon] - ribbonLever.rotation.y) * Math.min(1, dt * 20);
+}
+
+/* ============================== camera ============================== */
+let controls;
+const VIEWS = {
+  typist: { pos: [0, 44, 60], tgt: [0, 10.5, -1.5] },
+  paper:  { pos: [0, 27, 16], tgt: [0, 17, -8] },
+  side:   { pos: [-58, 30, 30], tgt: [0, 10, -2] },
+  top:    { pos: [0, 82, 9], tgt: [0, 9, -1] }
+};
+function viewFor(name){
+  const v = VIEWS[name], aspect = camera.aspect, k = aspect < 1.2 ? Math.min(2.1, Math.pow(1.35 / aspect, 0.85)) : 1;
+  const tgt = new T.Vector3(...v.tgt), pos = new T.Vector3(...v.pos).sub(tgt).multiplyScalar(k).add(tgt);
+  return { pos, tgt };
+}
+function goView(name, instant){
+  S.view = name; setSeg('view', name);
+  const { pos, tgt } = viewFor(name);
+  if (instant) { camera.position.copy(pos); controls.target.copy(tgt); controls.update(); return; }
+  const p0 = camera.position.clone(), t0 = controls.target.clone();
+  tween(900, p => { const e = p < .5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2; camera.position.lerpVectors(p0, pos, e); controls.target.lerpVectors(t0, tgt, e); });
+}
+function resize(){
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+
+/* ============================== pointer input ============================== */
+const ray = new T.Raycaster(), ndc = new T.Vector2();
+function pick(ev){
+  const r = canvas.getBoundingClientRect(); ndc.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const hits = ray.intersectObjects(pickables, false);
+  for (const h of hits) { if (h.object.visible && h.object.userData.type) return h; }
+  return null;
+}
+let drag = null;
+function onPointerDown(ev){
+  Snd.init();
+  const h = pick(ev); if (!h) return;
+  const u = h.object.userData, t = u.type;
+  if (t === 'paper') return; // let the camera orbit
+  controls.enabled = false; ev.preventDefault();
+  if (t === 'key') {
+    const k = u.key;
+    if (k.sp === 'space') space();
+    else if (k.sp === 'back') backspace();
+    else if (k.sp === 'tab') tab();
+    else if (k.sp === 'shift') { setShift(true); drag = { type: 'shift' }; }
+    else if (k.sp === 'lock') setLock(!S.lock);
+    else if (k.sp === 'marrel') toggleMarRel();
+    else if (k.sp === 'tabset') setTab(true);
+    else if (k.sp === 'tabclr') setTab(false);
+    else typeChar(shiftOn() ? k.hi : k.lo, 'click');
+  } else if (t === 'return') carriageReturn(true);
+  else if (t === 'knob') drag = { type: 'knob', y: ev.clientY, acc: 0 };
+  else if (t === 'ribbonSel') cycleRibbon();
+  else if (t === 'lineSpace') cycleSpacing();
+  else if (t === 'release') { S.paperIn ? removeSheet(false) : insertSheet(); }
+  else if (t === 'bar') { if (S.jammed) clearJam(); }
+}
+canvas.addEventListener('pointerdown', onPointerDown, true);
+window.addEventListener('pointermove', ev => {
+  if (drag && drag.type === 'knob') { drag.acc += ev.clientY - drag.y; drag.y = ev.clientY; while (Math.abs(drag.acc) >= 16) { const s = Math.sign(drag.acc); roll(s, ev.altKey); drag.acc -= s * 16; } return; }
+  hoverEv = ev;
+});
+window.addEventListener('pointerup', () => { if (drag && drag.type === 'shift') setShift(false); drag = null; if (controls) controls.enabled = true; });
+let hoverEv = null;
+let wheelAcc = 0;
+canvas.addEventListener('wheel', ev => {
+  const h = pick(ev); if (!h) return; const t = h.object.userData.type;
+  if (t === 'paper' || t === 'knob') {
+    ev.preventDefault(); ev.stopImmediatePropagation(); Snd.init();
+    wheelAcc += ev.deltaY * (ev.deltaMode === 1 ? 30 : 1);
+    while (Math.abs(wheelAcc) >= 50) { const s = Math.sign(wheelAcc); roll(s, ev.altKey); wheelAcc -= s * 50; }
+  }
+}, { capture: true, passive: false });
+
+/* ============================== keyboard input ============================== */
+const isField = el => el && el !== $('#softkb') && (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+window.addEventListener('keydown', e => {
+  if (isField(e.target)) return;
+  if (e.metaKey || e.ctrlKey) return;
+  if (!$('#modal').hidden) { if (e.key === 'Escape') closeModal(); return; }
+  if (e.target === $('#softkb') && e.key.length === 1) return; // handled by input events
+  if (e.target.tagName === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return;
+  if (typeof e.getModifierState === 'function') { const caps = e.getModifierState('CapsLock'); if (caps !== S.lock && e.key !== 'CapsLock') setLock(caps); }
+  const k = e.key;
+  if (k === 'Shift') { e.preventDefault(); if (!e.repeat) setShift(true); return; }
+  if (k === 'CapsLock') { setLock(e.getModifierState ? e.getModifierState('CapsLock') : !S.lock); return; }
+  if (e.repeat && !k.startsWith('Arrow')) { e.preventDefault(); return; }
+  let handled = true;
+  switch (k) {
+    case 'Enter': carriageReturn(true); break;
+    case 'Backspace': backspace(); break;
+    case 'Tab': tab(); break;
+    case ' ': space(); break;
+    case 'Escape': clearJam(); break;
+    case 'ArrowUp': roll(-1, e.altKey); break;
+    case 'ArrowDown': roll(1, e.altKey); break;
+    case 'ArrowLeft': nudge(-1); break;
+    case 'ArrowRight': nudge(1); break;
+    default:
+      if (k.length === 1) { if (CHARMAP[k]) typeChar(k, 'kbd'); else { Snd.init(); Snd.locked(0); } }
+      else handled = false;
+  }
+  if (handled) e.preventDefault();
+});
+window.addEventListener('keyup', e => {
+  if (e.key === 'Shift') setShift(false);
+  if (e.key === 'CapsLock' && typeof e.getModifierState === 'function') setLock(e.getModifierState('CapsLock'));
+});
+window.addEventListener('blur', () => setShift(false));
+
+// touch keyboards
+const softkb = $('#softkb');
+function softType(str){ Snd.init(); for (const c of str) S.queue.push(c === '\n' ? () => carriageReturn(true, true) : c === ' ' ? () => space(true) : () => typeChar(c, 'queue')); }
+softkb.addEventListener('beforeinput', e => {
+  if (e.inputType === 'insertText' && e.data) { e.preventDefault(); softType(e.data); }
+  else if (e.inputType === 'insertLineBreak' || e.inputType === 'insertParagraph') { e.preventDefault(); carriageReturn(true); }
+  else if (e.inputType === 'deleteContentBackward') { e.preventDefault(); backspace(); }
+});
+softkb.addEventListener('input', () => { const v = softkb.value; if (v) { softkb.value = ''; softType(v); } });
+$('#kbBtn').addEventListener('click', () => { Snd.init(); softkb.focus(); });
+
+
+/* ============================== page controls ============================== */
+function closeModal(){
+  $('#modal').hidden = true;
+  previewToken++;
+  if (preview) { URL.revokeObjectURL(preview.url); preview = null; $('#modalImg').removeAttribute('src'); }
+  canvas.focus({ preventScroll: true });
+}
+$('#modalClose').addEventListener('click', closeModal);
+$('#modalDownload').addEventListener('click', downloadPreview);
+$('#modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
+$('#saveScanBtn').addEventListener('click', e => { saveScan(); e.currentTarget.blur(); });
+// a typed page needs a second click before it is thrown away
+let newPaperArm = 0;
+function disarmNewPaper(){ clearTimeout(newPaperArm); newPaperArm = 0; const b = $('#newPaperBtn'); b.textContent = 'New paper'; b.classList.remove('warn'); }
+$('#newPaperBtn').addEventListener('click', e => {
+  const b = e.currentTarget; b.blur();
+  if (S.paperAnim) return;
+  if (hasInk() && !newPaperArm) {
+    newPaperArm = setTimeout(disarmNewPaper, 3000);
+    b.textContent = 'Discard page?'; b.classList.add('warn');
+    toast('Click again to discard this page. Save it first if you want to keep it.');
+    return;
+  }
+  disarmNewPaper(); insertSheet();
+});
+let hintGone = false;
+function hideHint(){ if (hintGone) return; hintGone = true; $('#hint').classList.add('gone'); }
+window.addEventListener('keydown', hideHint);
+canvas.addEventListener('pointerdown', hideHint);
+
+/* ============================== boot ============================== */
+function typeInstant(text){
+  for (const ch of text) {
+    if (ch === '\n') { S.col = S.leftM; S.feedPx += LINE_PX; continue; }
+    if (ch !== ' ') printGlyph(ch, S.col, S.feedPx, { noComposite: true, strength: rand(.86, 1) });
+    S.col++;
+  }
+}
+function boot(){
+  decalApron(); decalSides();
+  buildKeyboard(); buildTypebars(); buildRibbon(); buildRibbonSelector(); buildCarriage(); buildPaper();
+  updateFontMetrics();
+  genPaperBase(S.paperStyle); buildPath(S.paperStyle); applyPaperMaterial();
+  // a sheet already rolled in, with a few lines on it
+  const first = DPI + LINE_PX * 0.75; S.feedPx = first; S.firstLine = first; S.col = S.leftM;
+  recomposite(); inkDirty = false;
+  S.feedVis = S.feedPx; S.carX = -paperLocalX(S.col);
+  drawBailScale(); refreshReadout();
+  controls = new T.OrbitControls(camera, canvas);
+  controls.enableDamping = true; controls.dampingFactor = .08; controls.minDistance = 12; controls.maxDistance = 110;
+  controls.maxPolarAngle = 1.48; controls.minPolarAngle = .12; controls.screenSpacePanning = true; controls.rotateSpeed = .6;
+  resize(); goView('typist', true);  window.addEventListener('resize', resize);
+  let last = performance.now();
+  function frame(now){
+    const dt = Math.min(.05, (now - last) / 1000); last = now;
+    stepTweens(now); stepBars(now); drainQueue(); stepKeys(dt, now); stepCarriage(dt, now);
+    if (hoverEv && !drag) { const h = pick(hoverEv); const t = h && h.object.userData.type; canvas.style.cursor = t && t !== 'paper' ? (t === 'knob' ? 'ns-resize' : 'pointer') : 'grab'; hoverEv = null; }
+    controls.update(); renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+  setTimeout(() => { $('#loader').classList.add('gone'); setTimeout(() => $('#loader').hidden = true, 700); canvas.focus({ preventScroll: true }); }, 150);
+}
+const fontsReady = document.fonts ? Promise.race([
+  Promise.all([document.fonts.load('33px "Special Elite"'), document.fonts.load('33px "Courier Prime"'), document.fonts.load('700 40px "Courier Prime"')]),
+  new Promise(r => setTimeout(r, 3500))
+]) : Promise.resolve();
+fontsReady.then(boot, boot);
+})();
+</script>
+</body>
+</html>
